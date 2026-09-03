@@ -2,7 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Signal } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowRight, Activity, ChevronRight } from "lucide-react";
+import { Activity } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const getIndicatorColor = (tier: string) => {
   switch (tier) {
@@ -17,22 +18,21 @@ const getIndicatorColor = (tier: string) => {
 
 export function RecentSignals({ signals, isLoading }: { signals?: Signal[], isLoading: boolean }) {
   return (
-    <Card className="flex flex-col h-full shadow-sm" data-testid="card-recent-signals">
-      <CardHeader className="pb-4 border-b bg-muted/20">
+    <Card className="flex flex-col h-full shadow-sm border-border/80 rounded-xl" data-testid="card-recent-signals">
+      <CardHeader className="pb-4 border-b border-border/40">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-primary" />
-            <div>
-              <CardTitle className="text-lg font-semibold">Recent Signals</CardTitle>
-              <CardDescription className="mt-1">Latest market evidence.</CardDescription>
-            </div>
+          <div>
+            <CardTitle className="text-lg font-bold">Recent Signals</CardTitle>
+            <CardDescription className="mt-1 text-xs">Latest market evidence.</CardDescription>
           </div>
-          <Link href="/signals" className="text-sm font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1 group" data-testid="link-view-all-signals">
-            View all <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
-          </Link>
+          <Button variant="outline" size="sm" asChild className="h-8 text-xs font-semibold rounded-lg">
+             <Link href="/signals" data-testid="link-view-all-signals">
+               View all
+             </Link>
+          </Button>
         </div>
       </CardHeader>
-      <CardContent className="p-0 flex-1">
+      <CardContent className="p-0 flex-1 bg-card">
         {isLoading ? (
           <div className="p-6 space-y-6">
             {[1,2,3,4,5].map(i => (
@@ -54,34 +54,34 @@ export function RecentSignals({ signals, isLoading }: { signals?: Signal[], isLo
              <p className="text-xs text-muted-foreground mt-1">Connect sources to receive signals.</p>
           </div>
         ) : (
-          <div className="divide-y divide-border/50">
+          <div className="divide-y divide-border/40">
             {signals.map(signal => {
               const indicator = getIndicatorColor(signal.opportunity_tier);
               return (
-                <div key={signal.id} className="p-4 hover:bg-muted/20 transition-colors group relative" data-testid={`item-signal-${signal.id}`}>
-                  <div className="flex gap-3">
-                    <div className="mt-1 relative z-10 shrink-0">
+                <div key={signal.id} className="p-5 hover:bg-muted/20 transition-colors group relative" data-testid={`item-signal-${signal.id}`}>
+                  <div className="flex gap-4">
+                    <div className="mt-1.5 relative z-10 shrink-0">
                       <div className={`h-2.5 w-2.5 rounded-full ring-4 ring-background ${indicator}`} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="text-sm font-medium leading-snug line-clamp-2 pr-4 text-foreground">{signal.label}</p>
-                        <span className="text-[10px] font-medium text-muted-foreground whitespace-nowrap pt-0.5 shrink-0 tabular-nums">
+                      <div className="flex items-start justify-between gap-3 mb-1">
+                        <Link href={`/opportunities/${signal.company_id}`} className="text-xs font-bold text-muted-foreground hover:text-primary transition-colors">
+                          {signal.company_name}
+                        </Link>
+                        <span className="text-[10px] font-semibold text-muted-foreground/60 whitespace-nowrap uppercase tracking-wider">
                           {formatDistanceToNow(new Date(signal.last_seen_at), { addSuffix: true })}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 mt-2 text-xs">
-                        <Link href={`/opportunities/${signal.company_id}`} className="font-medium text-foreground hover:text-primary transition-colors flex items-center gap-1">
-                          {signal.company_name}
-                        </Link>
-                        <span className="text-muted-foreground/40">•</span>
-                        <span className="text-muted-foreground capitalize bg-muted/40 px-1.5 py-0.5 rounded-sm">
+                      <p className="text-sm font-semibold leading-snug line-clamp-2 text-foreground mb-2">
+                        {signal.label}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-muted/50 px-2 py-1 rounded-md">
                           {signal.category.replace(/_/g, ' ')}
                         </span>
                       </div>
                     </div>
                   </div>
-                  <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/30 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                 </div>
               );
             })}

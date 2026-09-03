@@ -1,56 +1,72 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardSummary } from "@workspace/api-client-react";
-import { BarChart3 } from "lucide-react";
-import { formatNumber } from "@/lib/utils";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+
+const COLORS: Record<string, string> = {
+  hot: "hsl(var(--color-hot-hsl))",
+  warm: "hsl(var(--color-warm-hsl))",
+  watch: "hsl(var(--color-watch-hsl))",
+  cold: "hsl(var(--color-cold-hsl))",
+  suppressed: "hsl(var(--color-suppressed-hsl))",
+};
 
 export function PipelineDistribution({ summary, isLoading }: { summary?: DashboardSummary, isLoading: boolean }) {
+  if (isLoading) {
+    return (
+      <Card className="h-full shadow-sm rounded-xl border-border/80">
+        <CardContent className="p-6"><div className="h-48 bg-muted/40 animate-pulse rounded-md" /></CardContent>
+      </Card>
+    );
+  }
+
+  const data = (summary?.tiers || [])
+    .map(t => ({
+      name: t.tier.charAt(0).toUpperCase() + t.tier.slice(1),
+      value: t.count,
+      tier: t.tier
+    }))
+    .filter(d => d.value > 0);
+
   return (
-    <Card className="h-full flex flex-col shadow-sm" data-testid="card-pipeline">
-      <CardHeader className="pb-4 border-b bg-muted/10">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-primary/10 rounded-md">
-            <BarChart3 className="h-4 w-4 text-primary shrink-0" />
-          </div>
-          <div>
-            <CardTitle className="text-sm font-semibold">Opportunity Pipeline</CardTitle>
-          </div>
-        </div>
+    <Card className="h-full shadow-sm border-border/80 rounded-xl" data-testid="card-pipeline-distribution">
+      <CardHeader className="pb-2 border-b border-border/40">
+        <CardTitle className="text-sm font-bold">Pipeline Distribution</CardTitle>
       </CardHeader>
-      <CardContent className="p-5 flex-1">
-        {isLoading ? (
-          <div className="space-y-5">
-            {[1,2,3,4,5].map(i => <div key={i} className="h-8 bg-muted/40 animate-pulse rounded" />)}
+      <CardContent className="p-6">
+        {data.length === 0 ? (
+          <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground font-medium">
+            No pipeline data available
           </div>
         ) : (
-          <div className="space-y-5">
-            {summary?.tiers.map((tier) => {
-              const percentage = summary.companies > 0 ? (tier.count / summary.companies) * 100 : 0;
-              let colorClass = "bg-primary";
-              if (tier.tier === "hot") colorClass = "bg-hot";
-              if (tier.tier === "warm") colorClass = "bg-warm";
-              if (tier.tier === "watch") colorClass = "bg-watch";
-              if (tier.tier === "cold") colorClass = "bg-cold";
-              if (tier.tier === "suppressed") colorClass = "bg-suppressed";
-
-              return (
-                <div key={tier.tier} className="space-y-1.5 group" data-testid={`pipeline-tier-${tier.tier}`}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="capitalize font-medium text-foreground group-hover:text-primary transition-colors">
-                      {tier.tier}
-                    </span>
-                    <span className="text-muted-foreground font-medium tabular-nums">
-                      {formatNumber(tier.count)} <span className="text-xs font-normal opacity-60">({Math.round(percentage)}%)</span>
-                    </span>
-                  </div>
-                  <Progress
-                    value={percentage}
-                    indicatorClassName={colorClass}
-                    className="h-1.5 bg-muted/40"
-                  />
-                </div>
-              );
-            })}
+          <div className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[entry.tier] || "hsl(var(--muted))"} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value: number) => [value, "Accounts"]}
+                  contentStyle={{ borderRadius: "8px", border: "1px solid hsl(var(--border))", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  iconType="circle"
+                  formatter={(value) => <span className="text-xs font-semibold text-foreground ml-1">{value}</span>}
+                />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
         )}
       </CardContent>

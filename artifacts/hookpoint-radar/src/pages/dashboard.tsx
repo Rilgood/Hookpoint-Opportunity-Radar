@@ -16,7 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardSkeleton } from "@/components/loading-states";
 import { EmptyState } from "@/components/empty-state";
-import { Radar, AlertTriangle, Info, Plug, CheckCircle2 } from "lucide-react";
+import { Radar, AlertTriangle, Info, Plug } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -196,7 +196,7 @@ export default function Dashboard() {
 
   if (isError || !dashboardRes?.data) {
     return (
-      <Card className="mx-auto max-w-2xl border-destructive/20 shadow-md">
+      <Card className="mx-auto max-w-2xl border-destructive/20 shadow-md rounded-xl">
         <CardContent className="py-14 text-center">
           <AlertTriangle className="mx-auto mb-4 h-10 w-10 text-destructive" />
           <h1 className="text-2xl font-bold">Radar is temporarily offline</h1>
@@ -204,7 +204,7 @@ export default function Dashboard() {
             We could not reach the evidence engine. Refresh the page in a
             moment; your saved opportunities have not been changed.
           </p>
-          <Button onClick={() => window.location.reload()} variant="outline" className="mt-6">
+          <Button onClick={() => window.location.reload()} variant="outline" className="mt-6 rounded-lg font-semibold">
             Retry Connection
           </Button>
         </CardContent>
@@ -218,20 +218,20 @@ export default function Dashboard() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
             Opportunity Radar
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-muted-foreground mt-2 font-medium">
             Intelligence workspace for growth teams. Detect and prioritize
             accounts based on evidence.
           </p>
         </div>
 
         {pilotState === "awaiting_credentials" && (
-          <Alert className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 mb-6">
-            <Plug className="h-4 w-4 text-amber-600 dark:text-amber-500" />
-            <AlertTitle className="text-amber-800 dark:text-amber-400 font-semibold">Awaiting Source Credentials</AlertTitle>
-            <AlertDescription className="text-amber-700/90 dark:text-amber-500/90 mt-1">
+          <Alert className="bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 mb-6 rounded-xl">
+            <Plug className="h-5 w-5 text-amber-600 dark:text-amber-500" />
+            <AlertTitle className="text-amber-800 dark:text-amber-400 font-bold">Awaiting Source Credentials</AlertTitle>
+            <AlertDescription className="text-amber-700/90 dark:text-amber-500/90 mt-1 font-medium">
               Your workspace is empty because data sources are waiting to be configured.
               Head to the Sources tab to review requirements, or load sample data below to evaluate the platform UI.
             </AlertDescription>
@@ -257,7 +257,7 @@ export default function Dashboard() {
   const reviewItems = reviewRes?.data;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+    <div className="space-y-8 animate-in fade-in duration-500 pb-10">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -265,24 +265,26 @@ export default function Dashboard() {
               Dashboard
             </h1>
             {isDemoDataOnly && (
-              <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300">
+              <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold bg-blue-50 text-blue-700 border-blue-200 uppercase tracking-wider">
                 Demo Mode
               </span>
             )}
           </div>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-1 font-medium">
             Overview of identified opportunities and signal volume.
           </p>
         </div>
       </div>
 
       {!hideBanner && (
-        <Alert className="bg-primary/5 border-primary/20 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-          <div className="flex gap-3">
-            <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+        <Alert className="bg-primary/5 border-primary/20 rounded-xl flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+          <div className="flex gap-4">
+            <div className="bg-primary/10 p-2 rounded-lg shrink-0 mt-0.5">
+              <Info className="h-5 w-5 text-primary" />
+            </div>
             <div>
-              <AlertTitle className="font-semibold text-foreground">Pilot Readiness Status</AlertTitle>
-              <AlertDescription className="mt-1 text-muted-foreground">
+              <AlertTitle className="font-bold text-foreground">Pilot Readiness Status</AlertTitle>
+              <AlertDescription className="mt-1 text-muted-foreground font-medium">
                 {pilotState === "demo" || isDemoDataOnly
                   ? "You are currently viewing safe demo data. The scoring engine is active, but live ingestion is disabled until sources are configured."
                   : pilotState === "awaiting_credentials"
@@ -293,7 +295,7 @@ export default function Dashboard() {
               </AlertDescription>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => setHideBanner(true)} className="shrink-0 -mr-2">
+          <Button variant="ghost" size="sm" onClick={() => setHideBanner(true)} className="shrink-0 -mr-2 font-bold rounded-lg text-muted-foreground">
             Dismiss
           </Button>
         </Alert>

@@ -57,11 +57,11 @@
   --color-sidebar-accent-border: var(--sidebar-accent-border);
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
-  --color-hot: hsl(24 95% 53%);
-  --color-warm: hsl(45 93% 47%);
-  --color-watch: hsl(217 91% 60%);
-  --color-cold: hsl(215 16% 47%);
-  --color-suppressed: hsl(0 0% 40%);
+  --color-hot: hsl(var(--color-hot-hsl));
+  --color-warm: hsl(var(--color-warm-hsl));
+  --color-watch: hsl(var(--color-watch-hsl));
+  --color-cold: hsl(var(--color-cold-hsl));
+  --color-suppressed: hsl(var(--color-suppressed-hsl));
 
   --font-sans: var(--app-font-sans);
   --font-serif: var(--app-font-serif);
@@ -73,7 +73,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* LIGHT MODE - Trustworthy Professional, Slate/Blue */
+/* LIGHT MODE - Violet & Crisp Business Identity */
 :root {
   --button-outline: rgba(0, 0, 0, 0.1);
   --badge-outline: rgba(0, 0, 0, 0.05);
@@ -81,50 +81,57 @@
   --elevate-1: rgba(0, 0, 0, 0.03);
   --elevate-2: rgba(0, 0, 0, 0.08);
 
-  --background: 210 40% 98%;
+  --background: 220 30% 98%; /* Crisp off-white */
   --foreground: 222 47% 11%;
 
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 221 83% 53%;
+  --border: 220 20% 90%; /* Fine gray borders */
+  --input: 220 20% 90%;
+  --ring: 262 55% 45%; /* Strong violet focus ring */
 
-  --card: 0 0% 100%;
+  --card: 0 0% 100%; /* Pure white surfaces */
   --card-foreground: 222 47% 11%;
-  --card-border: 214 32% 91%;
+  --card-border: 220 20% 90%;
 
-  --sidebar: 0 0% 100%;
-  --sidebar-foreground: 222 47% 11%;
-  --sidebar-border: 214 32% 91%;
-  --sidebar-primary: 221 83% 53%;
-  --sidebar-primary-foreground: 210 40% 98%;
-  --sidebar-accent: 210 40% 96%;
-  --sidebar-accent-foreground: 222 47% 11%;
-  --sidebar-ring: 221 83% 53%;
+  /* Sidebar: Solid Violet */
+  --sidebar: 262 55% 45%;
+  --sidebar-foreground: 262 30% 90%;
+  --sidebar-border: 262 55% 45%;
+  --sidebar-primary: 262 60% 96%; /* Pale lilac active background */
+  --sidebar-primary-foreground: 262 55% 45%; /* Deep violet active text */
+  --sidebar-accent: 262 40% 55%; /* Subtle hover background */
+  --sidebar-accent-foreground: 0 0% 100%; /* White hover text */
+  --sidebar-ring: 262 60% 70%;
 
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
-  --popover-border: 214 32% 91%;
+  --popover-border: 220 20% 90%;
 
-  --primary: 221 83% 53%;
-  --primary-foreground: 210 40% 98%;
+  --primary: 262 55% 45%; /* Strong violet */
+  --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
+  --secondary: 262 40% 96%; /* Pale lilac */
+  --secondary-foreground: 262 55% 45%;
 
-  --muted: 210 40% 96%;
+  --muted: 220 20% 96%;
   --muted-foreground: 215 16% 47%;
 
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
+  --accent: 262 40% 96%;
+  --accent-foreground: 262 55% 45%;
 
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 9 85% 62%; /* Coral red */
+  --destructive-foreground: 0 0% 100%;
 
-  --chart-1: 221 83% 53%;
-  --chart-2: 173 58% 39%;
-  --chart-3: 45 93% 47%;
-  --chart-4: 24 95% 53%;
-  --chart-5: 0 84% 60%;
+  --chart-1: 262 55% 45%;
+  --chart-2: 152 60% 42%; /* Mint */
+  --chart-3: 35 90% 55%;
+  --chart-4: 9 85% 62%; /* Coral */
+  --chart-5: 220 80% 55%;
+
+  --color-hot-hsl: 9 85% 62%; /* Coral / Orange */
+  --color-warm-hsl: 35 90% 55%;
+  --color-watch-hsl: 220 80% 55%; /* Blue */
+  --color-cold-hsl: 152 60% 42%; /* Mint/Green for positive */
+  --color-suppressed-hsl: 220 10% 60%; /* Muted Gray */
 
   --app-font-sans: "Plus Jakarta Sans", sans-serif;
   --app-font-serif: Georgia, serif;
@@ -147,14 +154,22 @@
   --border: 217 32% 17%;
 
   --input: 217 32% 17%;
-  --ring: 221 83% 53%;
+  --ring: 262 55% 55%;
 
   --card: 222 47% 11%;
   --card-foreground: 210 40% 98%;
   --card-border: 217 32% 17%;
 
-  --primary: 221 83% 53%;
-  --primary-foreground: 210 40% 98%;
+  --sidebar: 222 47% 10%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-border: 217 32% 17%;
+  --sidebar-primary: 262 40% 30%;
+  --sidebar-primary-foreground: 210 40% 98%;
+  --sidebar-accent: 217 32% 17%;
+  --sidebar-accent-foreground: 210 40% 98%;
+
+  --primary: 262 60% 60%;
+  --primary-foreground: 0 0% 100%;
 
   --secondary: 217 32% 17%;
   --secondary-foreground: 210 40% 98%;
@@ -164,6 +179,12 @@
 
   --accent: 217 32% 17%;
   --accent-foreground: 210 40% 98%;
+
+  --color-hot-hsl: 9 85% 65%;
+  --color-warm-hsl: 35 90% 60%;
+  --color-watch-hsl: 220 80% 65%;
+  --color-cold-hsl: 152 60% 50%;
+  --color-suppressed-hsl: 220 10% 50%;
 }
 
 @layer base {
@@ -180,5 +201,5 @@
 }
 .hover-elevate:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
 }
