@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, Link } from "wouter";
 import {
   useGetRadarCompany,
@@ -5,7 +6,7 @@ import {
   OutcomeInputOutcomeType,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetRadarCompanyQueryKey } from "@workspace/api-client-react";
+import { getGetRadarCompanyQueryKey, getGetRadarDashboardQueryKey, getListRadarCompaniesQueryKey } from "@workspace/api-client-react";
 import {
   Card,
   CardContent,
@@ -28,13 +29,17 @@ import {
   CheckCircle2,
   XCircle,
   Lightbulb,
+  GitMerge,
+  History,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { OutcomeDialog } from "@/components/outcome-dialog";
 
 export default function OpportunityDetail() {
   const { id } = useParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [outcomeDialogOpen, setOutcomeDialogOpen] = useState(false);
 
   const {
     data: response,
@@ -52,12 +57,21 @@ export default function OpportunityDetail() {
       onSuccess: () => {
         toast({
           title: "Outcome recorded",
-          description: "The account status has been updated.",
+          description: "The account status has been updated and metrics recalculated.",
         });
+        setOutcomeDialogOpen(false);
         if (id) {
-          queryClient.invalidateQueries({
-            queryKey: getGetRadarCompanyQueryKey(id),
-          });
+          void Promise.all([
+            queryClient.invalidateQueries({
+              queryKey: getGetRadarCompanyQueryKey(id),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: getListRadarCompaniesQueryKey(),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: getGetRadarDashboardQueryKey(),
+            })
+          ]);
         }
       },
       onError: () => {
@@ -73,42 +87,53 @@ export default function OpportunityDetail() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-8 w-[200px]" />
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-10 w-[300px] mb-8" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Skeleton className="h-[400px] w-full" />
+          <Skeleton className="h-[600px] w-full lg:col-span-2" />
+        </div>
       </div>
     );
   }
 
   if (isError || !response?.data) {
     return (
-      <div className="text-center py-20">
+      <div className="text-center py-32 bg-muted/20 rounded-xl border border-dashed">
         <h2 className="text-2xl font-bold mb-2">Account Not Found</h2>
-        <p className="text-muted-foreground mb-6">
-          This opportunity evidence packet could not be loaded.
+        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+          This opportunity evidence packet could not be loaded or may have been deleted.
         </p>
         <Link href="/opportunities">
-          <Button variant="outline">Return to list</Button>
+          <Button>Return to Opportunities</Button>
         </Link>
       </div>
     );
   }
 
-  const { company, signals, observations, recommendation, people } =
+  const { company, signals, observations, recommendation, outcomes } =
     response.data;
 
-  const handleOutcome = (type: OutcomeInputOutcomeType) => {
+  const handleOutcomeSubmit = (type: OutcomeInputOutcomeType, note?: string) => {
     if (!id) return;
-    outcomeMutation.mutate({ id, data: { outcome_type: type } });
+    outcomeMutation.mutate({ id, data: { outcome_type: type, note } });
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-12">
+      <OutcomeDialog
+        open={outcomeDialogOpen}
+        onOpenChange={setOutcomeDialogOpen}
+        onSubmit={handleOutcomeSubmit}
+        isPending={outcomeMutation.isPending}
+        companyName={company.name}
+      />
+
       <div>
         <Link href="/opportunities">
           <Button
             variant="ghost"
             size="sm"
-            className="mb-4 -ml-3 text-muted-foreground"
+            className="mb-4 -ml-3 text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Opportunities
           </Button>
@@ -123,7 +148,7 @@ export default function OpportunityDetail() {
                 variant="outline"
                 className={
                   getTierColor(company.opportunity_tier) +
-                  " capitalize text-sm px-3"
+                  " capitalize text-sm px-3 shadow-sm"
                 }
               >
                 {company.opportunity_tier} Tier
@@ -134,35 +159,22 @@ export default function OpportunityDetail() {
                 href={company.website_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline flex items-center text-sm"
+                className="text-primary hover:text-primary/80 hover:underline flex items-center text-sm font-medium mt-1"
               >
-                {company.domain} <ExternalLink className="ml-1 h-3 w-3" />
+                {company.domain} <ExternalLink className="ml-1 h-3.5 w-3.5" />
               </a>
             )}
           </div>
 
-          <div className="flex gap-2 bg-card border rounded-md p-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground mr-2 hidden sm:inline-block">Status: <span className="font-semibold text-foreground capitalize">{company.status}</span></span>
             <Button
-              size="sm"
-              variant="ghost"
-              className="text-green-600 hover:text-green-700 hover:bg-green-50"
-              onClick={() => handleOutcome(OutcomeInputOutcomeType.opportunity)}
-              disabled={outcomeMutation.isPending}
-              data-testid="btn-mark-opportunity"
+              variant="default"
+              className="shadow-sm"
+              onClick={() => setOutcomeDialogOpen(true)}
+              data-testid="btn-open-outcome-dialog"
             >
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Accept
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={() =>
-                handleOutcome(OutcomeInputOutcomeType.disqualified)
-              }
-              disabled={outcomeMutation.isPending}
-              data-testid="btn-mark-disqualified"
-            >
-              <XCircle className="mr-2 h-4 w-4" /> Disqualify
+              <GitMerge className="mr-2 h-4 w-4" /> Record Outcome
             </Button>
           </div>
         </div>
@@ -171,70 +183,70 @@ export default function OpportunityDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Key Info & Recommendation */}
         <div className="space-y-6 lg:col-span-1">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Account Profile</CardTitle>
+          <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+            <CardHeader className="pb-3 bg-slate-50/50 dark:bg-slate-900/50 border-b">
+              <CardTitle className="text-lg font-bold">Account Profile</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+            <CardContent className="pt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-y-5 gap-x-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground mb-1 flex items-center gap-1">
-                    <Building2 className="h-3 w-3" /> Industry
+                  <p className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
+                    <Building2 className="h-3.5 w-3.5" /> Industry
                   </p>
-                  <p className="font-medium">{company.industry || "Unknown"}</p>
+                  <p className="font-medium text-foreground">{company.industry || "Unknown"}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground mb-1 flex items-center gap-1">
-                    <Users className="h-3 w-3" /> Size
+                  <p className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
+                    <Users className="h-3.5 w-3.5" /> Size
                   </p>
-                  <p className="font-medium">
+                  <p className="font-medium text-foreground">
                     {company.size_band || "Unknown"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground mb-1 flex items-center gap-1">
-                    <MapPin className="h-3 w-3" /> Location
+                  <p className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
+                    <MapPin className="h-3.5 w-3.5" /> Location
                   </p>
-                  <p className="font-medium">
+                  <p className="font-medium text-foreground">
                     {company.city
                       ? `${company.city}, ${company.state || ""}`
                       : "Unknown"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground mb-1 flex items-center gap-1">
-                    <Activity className="h-3 w-3" /> Status
+                  <p className="text-muted-foreground mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
+                    <Activity className="h-3.5 w-3.5" /> Status
                   </p>
-                  <p className="font-medium capitalize">{company.status}</p>
+                  <p className="font-medium text-foreground capitalize">{company.status}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-primary text-primary-foreground border-primary-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Lightbulb className="h-5 w-5 text-accent" />
-                Score: {company.opportunity_score}/100
+          <Card className="bg-slate-900 text-white border-slate-800 shadow-md">
+            <CardHeader className="pb-3 border-b border-white/10">
+              <CardTitle className="text-lg flex items-center gap-2 font-bold">
+                <Lightbulb className="h-5 w-5 text-blue-400" />
+                Score Engine: {company.opportunity_score}/100
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-3 text-sm opacity-90">
+            <CardContent className="pt-4">
+              <div className="space-y-3.5 text-sm font-medium">
                 <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                  <span>Fit Score</span>
-                  <span className="font-mono">{company.fit_score}</span>
+                  <span className="text-slate-300">Fit Score</span>
+                  <span className="font-mono text-base">{company.fit_score}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                  <span>Intent Score</span>
-                  <span className="font-mono">{company.intent_score}</span>
+                  <span className="text-slate-300">Intent Score</span>
+                  <span className="font-mono text-base">{company.intent_score}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-white/10 pb-2">
-                  <span>Timing Score</span>
-                  <span className="font-mono">{company.timing_score}</span>
+                  <span className="text-slate-300">Timing Score</span>
+                  <span className="font-mono text-base">{company.timing_score}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span>Risk Penalty</span>
-                  <span className="font-mono text-red-300">
+                  <span className="text-slate-300">Risk Penalty</span>
+                  <span className="font-mono text-base text-red-400">
                     {company.risk_score > 0 ? `-${company.risk_score}` : "0"}
                   </span>
                 </div>
@@ -243,55 +255,55 @@ export default function OpportunityDetail() {
           </Card>
 
           {recommendation && (
-            <Card className="border-accent">
-              <CardHeader className="pb-3 bg-accent/5">
-                <CardTitle className="text-lg text-foreground">
-                  Playbook
+            <Card className="border-blue-200 dark:border-blue-900 shadow-sm">
+              <CardHeader className="pb-3 bg-blue-50/50 dark:bg-blue-950/20 border-b border-blue-100 dark:border-blue-900/50">
+                <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                  Recommended Playbook
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pt-4 space-y-4 text-sm">
+              <CardContent className="pt-5 space-y-5 text-sm">
                 <div>
-                  <span className="font-semibold block mb-1">
-                    Recommended Offer
+                  <span className="font-bold text-foreground block mb-1.5 uppercase text-xs tracking-wider text-blue-600 dark:text-blue-400">
+                    Target Offer
                   </span>
-                  <p className="text-muted-foreground">
+                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
                     {recommendation.offer}
                   </p>
                 </div>
                 <div>
-                  <span className="font-semibold block mb-1">
+                  <span className="font-bold text-foreground block mb-1.5 uppercase text-xs tracking-wider text-blue-600 dark:text-blue-400">
                     Outreach Angle
                   </span>
-                  <p className="text-muted-foreground">
+                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
                     {recommendation.outreach_angle}
                   </p>
                 </div>
                 {recommendation.proof_points &&
                   recommendation.proof_points.length > 0 && (
                     <div>
-                      <span className="font-semibold block mb-1">
-                        Proof Points
+                      <span className="font-bold text-foreground block mb-2.5 uppercase text-xs tracking-wider text-blue-600 dark:text-blue-400">
+                        Supporting Evidence
                       </span>
-                      <ul className="space-y-2 text-muted-foreground">
+                      <ul className="space-y-3 text-muted-foreground">
                         {recommendation.proof_points.map((pt, i) => (
                           <li
                             key={`${pt.label}-${i}`}
-                            className="rounded-md border bg-muted/30 p-3"
+                            className="rounded-lg border bg-white dark:bg-slate-900 shadow-sm p-3"
                           >
                             <div className="flex items-start justify-between gap-3">
-                              <span className="font-medium text-foreground">
+                              <span className="font-semibold text-foreground text-sm">
                                 {pt.label}
                               </span>
-                              <span className="shrink-0 font-mono text-xs text-primary">
+                              <span className="shrink-0 font-mono text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
                                 +{pt.contribution}
                               </span>
                             </div>
-                            <p className="mt-1 text-xs leading-relaxed">
+                            <p className="mt-1.5 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
                               {pt.summary}
                             </p>
-                            <p className="mt-2 text-[11px]">
+                            <p className="mt-2.5 text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
                               {pt.source_count}{" "}
-                              {pt.source_count === 1 ? "source" : "sources"} ·
+                              {pt.source_count === 1 ? "source" : "sources"} &bull;{" "}
                               seen {formatDate(pt.last_seen_at)}
                             </p>
                           </li>
@@ -302,48 +314,78 @@ export default function OpportunityDetail() {
               </CardContent>
             </Card>
           )}
+
+          {outcomes && outcomes.length > 0 && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+              <CardHeader className="pb-3 border-b">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2 text-muted-foreground">
+                  <History className="h-4 w-4" /> Activity History
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <div className="space-y-4">
+                  {outcomes.slice(0, 5).map((outcome: any, i) => (
+                    <div key={i} className="flex gap-3 text-sm border-l-2 border-muted pl-4 py-1 relative">
+                      <div className="absolute w-2 h-2 rounded-full bg-primary -left-[5px] top-2" />
+                      <div className="flex-1">
+                        <div className="font-semibold capitalize text-foreground">
+                          {String(outcome.outcome_type).replace(/_/g, ' ')}
+                        </div>
+                        {outcome.note && (
+                          <div className="text-muted-foreground text-xs mt-1 italic">
+                            "{outcome.note}"
+                          </div>
+                        )}
+                        <div className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider">
+                          {formatDate(outcome.created_at)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Right Column - Evidence (Signals & Observations) */}
         <div className="space-y-6 lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Active Signals</CardTitle>
-              <CardDescription>
-                Synthesized drivers behind the opportunity score.
+          <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+            <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b">
+              <CardTitle className="text-xl font-bold">Active Signals</CardTitle>
+              <CardDescription className="text-sm mt-1">
+                Synthesized drivers computing the final opportunity score.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {signals.length === 0 ? (
-                <div className="text-center py-6 text-muted-foreground text-sm border border-dashed rounded-md">
-                  No active signals detected.
+                <div className="text-center py-10 text-muted-foreground text-sm border border-dashed rounded-lg bg-slate-50 dark:bg-slate-900/50">
+                  No active signals detected for this account.
                 </div>
               ) : (
                 <div className="space-y-4">
                   {signals.map((signal) => (
                     <div
                       key={signal.id}
-                      className="p-4 border rounded-lg bg-card hover-elevate transition-all"
+                      className="p-5 border border-slate-200 dark:border-slate-800 rounded-xl bg-card hover-elevate transition-all"
                     >
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-semibold">{signal.label}</h4>
+                      <div className="flex justify-between items-start mb-2.5">
+                        <h4 className="font-bold text-base text-foreground leading-tight pr-4">{signal.label}</h4>
                         <Badge
                           variant="secondary"
-                          className="capitalize text-xs"
+                          className="capitalize text-xs font-semibold bg-slate-100 dark:bg-slate-800 shrink-0"
                         >
                           {humanizeLabel(signal.category)}
                         </Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground mb-3">
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
                         {signal.summary}
                       </p>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground font-medium">
-                        <span>Contribution: +{signal.contribution}</span>
-                        <span>
-                          Evidence: {signal.source_count}{" "}
-                          {signal.source_count === 1 ? "source" : "sources"}
-                        </span>
-                        <span>Seen: {formatDate(signal.first_seen_at)}</span>
+                      <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
+                        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Contribution: +{signal.contribution}</span>
+                        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Evidence: {signal.source_count}{" "}
+                          {signal.source_count === 1 ? "source" : "sources"}</span>
+                        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> Seen: {formatDate(signal.first_seen_at)}</span>
                       </div>
                     </div>
                   ))}
@@ -352,61 +394,65 @@ export default function OpportunityDetail() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Raw Observations</CardTitle>
-              <CardDescription>
-                Source evidence backing the active signals.
+          <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+            <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b">
+              <CardTitle className="text-xl font-bold">Raw Observations</CardTitle>
+              <CardDescription className="text-sm mt-1">
+                Direct source evidence backing the active signals.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {observations.length === 0 ? (
-                <div className="text-center py-6 text-muted-foreground text-sm border border-dashed rounded-md">
+                <div className="text-center py-10 text-muted-foreground text-sm border border-dashed rounded-lg bg-slate-50 dark:bg-slate-900/50">
                   No raw observations available.
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {observations.map((obs) => (
                     <div
                       key={obs.id}
-                      className="flex gap-4 p-3 border-b last:border-0 hover:bg-muted/50 transition-colors rounded-sm"
+                      className="flex flex-col sm:flex-row gap-4 p-4 border border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-colors rounded-xl bg-white dark:bg-slate-950 shadow-sm"
                     >
-                      <div className="w-16 shrink-0 pt-1">
+                      <div className="sm:w-28 shrink-0 pt-1">
                         <Badge
                           variant="outline"
-                          className="text-[10px] w-full justify-center"
+                          className="text-[10px] w-full justify-center font-semibold bg-slate-50 dark:bg-slate-900"
                         >
                           {humanizeLabel(obs.source)}
                         </Badge>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-sm">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-1.5">
+                          <span className="font-bold text-sm text-foreground">
                             {obs.title}
                           </span>
-                          <span className="text-xs text-muted-foreground bg-muted px-1.5 rounded">
+                          <span className="text-[10px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded uppercase tracking-wider w-fit">
                             {humanizeLabel(obs.type)}
                           </span>
                         </div>
                         {obs.body && (
-                          <p className="text-sm text-muted-foreground line-clamp-2">
+                          <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
                             {obs.body}
                           </p>
                         )}
-                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-3 mt-3 text-xs font-medium text-slate-400 uppercase tracking-wide">
                           <span>{formatDate(obs.observed_at)}</span>
+                          <span>&bull;</span>
                           <span>
-                            Confidence: {(obs.confidence * 100).toFixed(0)}%
+                            Conf: {(obs.confidence * 100).toFixed(0)}%
                           </span>
                           {obs.url && (
-                            <a
-                              href={obs.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline inline-flex items-center"
-                            >
-                              Source <ExternalLink className="h-3 w-3 ml-0.5" />
-                            </a>
+                            <>
+                              <span>&bull;</span>
+                              <a
+                                href={obs.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:text-primary/80 hover:underline inline-flex items-center lowercase"
+                              >
+                                View source <ExternalLink className="h-3 w-3 ml-1" />
+                              </a>
+                            </>
                           )}
                         </div>
                       </div>

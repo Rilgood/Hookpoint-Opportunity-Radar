@@ -11,8 +11,50 @@ import { recordOutcome } from '../src/services/outcomes.js';
 import { rescoreCompany, rescoreDueCompanies } from '../src/services/signals.js';
 import { consumeWebhookReceipt } from '../src/services/webhooks.js';
 import { BaseConnector } from '../src/connectors/base.js';
+import { authenticate, setTrustedPrincipal } from '../src/http/security.js';
+import { sha256 } from '../src/lib.js';
 
 function setup() { const db = openDatabase(':memory:'); bootstrap(db); return db; }
+
+test('derives a private tenant only from the trusted Clerk principal', () => {
+  const db = setup();
+  const req = { headers: { 'x-tenant-id': config.defaultTenantId, 'x-role': 'owner' } };
+  setTrustedPrincipal(req, { userId: 'user_clerk_verified' });
+  const auth = authenticate(db, req);
+  assert.equal(auth.tenantId, 'user_clerk_verified');
+  assert.equal(auth.actor, 'clerk:user_clerk_verified');
+  assert.deepEqual(auth.scopes, ['read', 'write', 'admin']);
+  assert.equal(db.get('SELECT name FROM tenants WHERE id=?', [auth.tenantId]).name, 'Private workspace');
+  db.close();
+});
+
+test('ignores spoofed tenant and role headers without a trusted principal', () => {
+  const db = setup();
+  const auth = authenticate(db, {
+    headers: { 'x-tenant-id': 'user_other_person', 'x-role': 'admin' },
+    socket: {},
+  });
+  assert.equal(auth.tenantId, config.defaultTenantId);
+  assert.equal(db.get('SELECT id FROM tenants WHERE id=?', ['user_other_person']), undefined);
+  db.close();
+});
+
+test('authenticates a direct API key through the existing core path', () => {
+  const db = setup();
+  const token = 'hp_live_direct_client_regression';
+  db.run(
+    `INSERT INTO api_keys(id, tenant_id, name, key_prefix, key_hash, scopes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ['key_direct_regression', config.defaultTenantId, 'Direct regression client', token.slice(0, 16), sha256(token), 'read,write', new Date().toISOString()]
+  );
+  const auth = authenticate(db, {
+    headers: { 'x-api-key': token, 'x-tenant-id': 'user_spoofed', 'x-role': 'admin' },
+  });
+  assert.equal(auth.authType, 'apiKey');
+  assert.equal(auth.tenantId, config.defaultTenantId);
+  assert.deepEqual(auth.scopes, ['read', 'write']);
+  db.close();
+});
 
 test('starts with an empty company dataset and no runtime sample connector', () => {
   const db = setup();

@@ -74,9 +74,9 @@ export function DataReadiness({ quality, summary, isLoading }: { quality?: DataQ
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-bold text-muted-foreground tabular-nums">{formatNumber(source.observations)}</span>
                   <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-primary/80 rounded-full" 
-                      style={{ width: `${Math.round(source.average_confidence * 100)}%` }} 
+                    <div
+                      className="h-full bg-primary/80 rounded-full"
+                      style={{ width: `${Math.round(source.average_confidence * 100)}%` }}
                     />
                   </div>
                 </div>

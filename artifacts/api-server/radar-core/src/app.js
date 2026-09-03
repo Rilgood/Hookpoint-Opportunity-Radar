@@ -21,13 +21,17 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
   bootstrap(db);
   const router = new Router();
 
-  router.get('/health', async () => ({ status: 'ok', service: 'hookpoint-opportunity-radar', version: '1.1.0', time: nowIso() }), { publicRoute: true });
-  router.get('/ready', async () => {
+  const health = async () => ({ status: 'ok', service: 'hookpoint-opportunity-radar', version: '1.1.0', time: nowIso() });
+  const readiness = async () => {
     const migration = db.get('SELECT MAX(version) version FROM schema_migrations');
     const issues = runtimeIssues(db);
     const ready = Boolean(migration?.version) && !issues.some((issue) => issue.severity === 'critical');
     return { status: ready ? 200 : 503, data: { status: ready ? 'ready' : 'not_ready', schema_version: migration?.version || 0, storage_mode: config.storageMode, issues } };
-  }, { publicRoute: true });
+  };
+  router.get('/health', health, { publicRoute: true });
+  router.get('/ready', readiness, { publicRoute: true });
+  router.get('/api/health', health, { publicRoute: true });
+  router.get('/api/ready', readiness, { publicRoute: true });
 
   router.get('/api/v1/meta', async () => ({
     name: 'Hook Point Opportunity Radar', version: '1.1.0', scoring_version: scoringConfig.version, storage_mode: config.storageMode,
@@ -141,16 +145,19 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
   });
   router.get('/api/v1/review-queue', async ({ auth, query }) => reviewQueue(db, auth.tenantId, query));
   router.get('/api/v1/api-keys', async ({ auth }) => {
+    rejectBrowserApiKeyManagement(auth);
     requireScope(auth, 'admin');
     return listApiKeys(db, auth.tenantId);
   });
   router.post('/api/v1/api-keys', async ({ auth, body, requestId }) => {
+    rejectBrowserApiKeyManagement(auth);
     requireScope(auth, 'admin');
     const created = db.transaction(() => createApiKey(db, auth.tenantId, body));
     recordAudit(db, auth.tenantId, { action: 'api_key.created', actor: auth.actor, resourceType: 'api_key', resourceId: created.id, requestId, details: { name: created.name, scopes: created.scopes } });
     return { status: 201, data: created };
   });
   router.delete('/api/v1/api-keys/:id', async ({ auth, params, requestId }) => {
+    rejectBrowserApiKeyManagement(auth);
     requireScope(auth, 'admin');
     const revoked = db.transaction(() => revokeApiKey(db, auth.tenantId, params.id, auth.keyId));
     recordAudit(db, auth.tenantId, { action: 'api_key.revoked', actor: auth.actor, resourceType: 'api_key', resourceId: params.id, requestId });
@@ -174,11 +181,13 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
         throw new AppError(404, 'asset_not_found', 'Asset not found.');
       }
       const route = router.match(req.method, url.pathname);
-      if (config.env === 'production' && url.pathname.startsWith('/api/')) {
-        const critical = runtimeIssues(db).filter((issue) => issue.severity === 'critical');
+      const auth = authenticate(db, req, route.options);
+      if (config.env === 'production' && url.pathname.startsWith('/api/') && !route.options.publicRoute) {
+        const apiKeyOnlyIssues = new Set(['weak_hash_salt', 'no_active_api_key']);
+        const critical = runtimeIssues(db).filter((issue) =>
+          issue.severity === 'critical' && !(auth.authType === 'clerk' && apiKeyOnlyIssues.has(issue.code)));
         if (critical.length) throw new AppError(503, 'runtime_not_ready', 'The service is not ready for production traffic.', critical.map(({ code }) => code));
       }
-      const auth = authenticate(db, req, route.options);
       if (req.method === 'GET' && !route.options.publicRoute) requireScope(auth, 'read');
       const payload = ['POST','PATCH','PUT'].includes(req.method) ? await readBody(req) : { raw: '', data: {} };
       const query = Object.fromEntries(url.searchParams.entries());
@@ -206,6 +215,12 @@ function boundedInteger(value, fallback, maximum, field) {
   const number = Number(value);
   if (!Number.isInteger(number) || number < 1 || number > maximum) throw new AppError(400, `invalid_${field}`, `${field} must be an integer between 1 and ${maximum}.`);
   return number;
+}
+
+function rejectBrowserApiKeyManagement(auth) {
+  if (auth.authType === 'clerk') {
+    throw new AppError(403, 'browser_api_key_management_disabled', 'API keys are available only to direct API clients.');
+  }
 }
 
 export function log(level, event, details) {

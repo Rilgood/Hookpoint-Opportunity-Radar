@@ -34,10 +34,10 @@ export function PriorityAccounts({ companies, isLoading }: { companies?: Company
         ) : (
           <div className="divide-y divide-border/50">
             {companies.map((company, index) => (
-              <Link 
-                key={company.id} 
-                href={`/opportunities/${company.id}`} 
-                className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors group" 
+              <Link
+                key={company.id}
+                href={`/opportunities/${company.id}`}
+                className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors group"
                 data-testid={`link-company-${company.id}`}
               >
                 <div className="flex items-center gap-4">

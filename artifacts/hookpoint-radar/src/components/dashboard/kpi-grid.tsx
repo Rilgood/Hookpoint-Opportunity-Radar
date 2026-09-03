@@ -27,7 +27,7 @@ export function KpiGrid({ summary, quality }: KpiGridProps) {
           </p>
         </CardContent>
       </Card>
-      
+
       <Card data-testid="kpi-hot" className="bg-card shadow-sm hover:shadow-md transition-shadow border-hot/20 relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-hot/40 to-hot" />
         <CardHeader className="flex flex-row items-start justify-between gap-2 p-4 pb-1 sm:p-6 sm:pb-2">
@@ -60,7 +60,7 @@ export function KpiGrid({ summary, quality }: KpiGridProps) {
           <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
             <span className="text-emerald-500 font-medium bg-emerald-500/10 px-1.5 py-0.5 rounded-sm tabular-nums">
               +{formatNumber(summary?.new_signals_7d || 0)}
-            </span> 
+            </span>
             <span>last 7 days</span>
           </div>
         </CardContent>
