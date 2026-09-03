@@ -1,0 +1,14 @@
+{
+  "version": "rules-1.1",
+  "dimensionWeights": { "fit": 0.24, "need": 0.32, "intent": 0.24, "timing": 0.20 },
+  "riskPenalty": 0.65,
+  "riskSuppressionThreshold": 45,
+  "tierThresholds": { "hot": 65, "warm": 48, "watch": 32 },
+  "breadthBonusPerSignal": 4,
+  "breadthBonusMaximum": 12,
+  "activeDimensionThreshold": 20,
+  "dimensionBreadthBonus": 4,
+  "corroboration": { "sourceLift": 0.08, "evidenceLift": 0.03, "evidenceLiftLimit": 4, "maximum": 1.25 },
+  "evidenceConfidence": { "additionalSourceLift": 0.20, "maximumRemainingLift": 0.50, "maximum": 0.98 },
+  "refreshDays": { "hot": 0.25, "watchlist": 1, "qualified": 7, "universe": 30 }
+}

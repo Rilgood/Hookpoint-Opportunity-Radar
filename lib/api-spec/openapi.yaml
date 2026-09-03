@@ -1,22 +1,21 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
+  # Do not change the title: generated import paths depend on it.
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 1.1.0
+  description: Typed application contract for the Hook Point Opportunity Radar.
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: radar
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +23,839 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /v1/dashboard:
+    get:
+      operationId: getRadarDashboard
+      tags: [radar]
+      summary: Get portfolio metrics
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardResponse"
+  /v1/companies:
+    get:
+      operationId: listRadarCompanies
+      tags: [radar]
+      summary: List ranked companies
+      parameters:
+        - in: query
+          name: tier
+          schema:
+            $ref: "#/components/schemas/OpportunityTier"
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: min_score
+          schema:
+            type: number
+            minimum: 0
+            maximum: 100
+        - in: query
+          name: page
+          schema:
+            type: number
+            minimum: 1
+        - in: query
+          name: limit
+          schema:
+            type: number
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Ranked company page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyListResponse"
+  /v1/companies/{id}:
+    get:
+      operationId: getRadarCompany
+      tags: [radar]
+      summary: Get a complete evidence packet
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Company evidence packet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyDetailResponse"
+        "404":
+          description: Company not found
+  /v1/companies/{id}/outcomes:
+    post:
+      operationId: recordRadarOutcome
+      tags: [radar]
+      summary: Record a human-reviewed sales outcome
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutcomeInput"
+      responses:
+        "201":
+          description: Outcome recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutcomeResponse"
+  /v1/ingest:
+    post:
+      operationId: ingestRadarObservations
+      tags: [radar]
+      summary: Ingest a batch of canonical observations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObservationBatchInput"
+      responses:
+        "200":
+          description: Batch accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestionResponse"
+        "207":
+          description: Batch partially accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestionResponse"
+  /v1/signals:
+    get:
+      operationId: listRadarSignals
+      tags: [radar]
+      summary: List inferred opportunity signals
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, expired]
+        - in: query
+          name: category
+          schema:
+            type: string
+        - in: query
+          name: company_id
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: number
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Signal list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalsResponse"
+  /v1/connectors:
+    get:
+      operationId: listRadarConnectors
+      tags: [radar]
+      summary: List connector readiness and state
+      responses:
+        "200":
+          description: Connector list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorsResponse"
+  /v1/connectors/{key}:
+    patch:
+      operationId: updateRadarConnector
+      tags: [radar]
+      summary: Enable or disable a configured connector
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorUpdate"
+      responses:
+        "200":
+          description: Connector updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorResponse"
+  /v1/data-quality:
+    get:
+      operationId: getRadarDataQuality
+      tags: [radar]
+      summary: Get ingestion, identity, freshness, and connector health
+      responses:
+        "200":
+          description: Data quality summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataQualityResponse"
+  /v1/review-queue:
+    get:
+      operationId: listRadarReviewQueue
+      tags: [radar]
+      summary: List accounts requiring human review
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: number
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Review queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewQueueResponse"
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
+    ResponseMeta:
+      type: object
+      required: [request_id, duration_ms]
+      properties:
+        request_id:
+          type: string
+        duration_ms:
+          type: number
+    OpportunityTier:
+      type: string
+      enum: [hot, warm, watch, cold, suppressed]
+    CompanyStatus:
+      type: string
+      enum: [prospect, accepted, rejected, contacted, replied, meeting, opportunity, customer, lost, disqualified]
+    Company:
+      type: object
       required:
+        - id
+        - name
+        - industry
         - status
+        - monitoring_tier
+        - identity_confidence
+        - identity_method
+        - fit_score
+        - need_score
+        - intent_score
+        - timing_score
+        - risk_score
+        - opportunity_score
+        - opportunity_tier
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        domain:
+          type: ["string", "null"]
+        website_url:
+          type: ["string", "null"]
+        industry:
+          type: string
+        subindustry:
+          type: ["string", "null"]
+        employee_count:
+          type: ["number", "null"]
+        size_band:
+          type: ["string", "null"]
+        annual_revenue:
+          type: ["number", "null"]
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
+        status:
+          $ref: "#/components/schemas/CompanyStatus"
+        monitoring_tier:
+          type: string
+        identity_confidence:
+          type: number
+        identity_method:
+          type: string
+        fit_score:
+          type: number
+        need_score:
+          type: number
+        intent_score:
+          type: number
+        timing_score:
+          type: number
+        risk_score:
+          type: number
+        opportunity_score:
+          type: number
+        opportunity_tier:
+          $ref: "#/components/schemas/OpportunityTier"
+        owner_name:
+          type: ["string", "null"]
+        last_observed_at:
+          type: ["string", "null"]
+          format: date-time
+        next_refresh_at:
+          type: ["string", "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    DashboardSummary:
+      type: object
+      required: [companies, hot, warm, watch, average_score, active_signals, new_signals_7d, connectors, top_industries, tiers]
+      properties:
+        companies:
+          type: number
+        hot:
+          type: number
+        warm:
+          type: number
+        watch:
+          type: number
+        average_score:
+          type: number
+        active_signals:
+          type: number
+        new_signals_7d:
+          type: number
+        connectors:
+          type: object
+          required: [configured, enabled, total]
+          properties:
+            configured:
+              type: number
+            enabled:
+              type: number
+            total:
+              type: number
+        top_industries:
+          type: array
+          items:
+            type: object
+            required: [industry, companies, average_score]
+            properties:
+              industry:
+                type: string
+              companies:
+                type: number
+              average_score:
+                type: number
+        tiers:
+          type: array
+          items:
+            type: object
+            required: [tier, count]
+            properties:
+              tier:
+                $ref: "#/components/schemas/OpportunityTier"
+              count:
+                type: number
+    DashboardResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/DashboardSummary"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    CompanyPage:
+      type: object
+      required: [data, page, limit, total, pages]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Company"
+        page:
+          type: number
+        limit:
+          type: number
+        total:
+          type: number
+        pages:
+          type: number
+    CompanyListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/CompanyPage"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    Signal:
+      type: object
+      required: [id, company_id, company_name, signal_key, label, category, contribution, summary, source_count, status, first_seen_at, last_seen_at, opportunity_score, opportunity_tier]
+      properties:
+        id:
+          type: string
+        company_id:
+          type: string
+        company_name:
+          type: string
+        domain:
+          type: ["string", "null"]
+        signal_key:
+          type: string
+        label:
+          type: string
+        category:
+          type: string
+        dimension:
+          type: string
+        confidence:
+          type: number
+        contribution:
+          type: number
+        evidence_count:
+          type: number
+        source_count:
+          type: number
+        summary:
+          type: string
+        status:
+          type: string
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        opportunity_score:
+          type: number
+        opportunity_tier:
+          $ref: "#/components/schemas/OpportunityTier"
+    Observation:
+      type: object
+      required: [id, source, type, title, confidence, observed_at]
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        body:
+          type: ["string", "null"]
+        url:
+          type: ["string", "null"]
 
+        confidence:
+          type: number
+        observed_at:
+          type: string
+          format: date-time
+    Person:
+      type: object
+      required: [id, full_name]
+      properties:
+        id:
+          type: string
+        full_name:
+          type: string
+        title:
+          type: ["string", "null"]
+        department:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        confidence:
+          type: number
+        is_decision_maker:
+          type: [number, boolean]
+    Recommendation:
+      type: object
+      required: [offer, rationale, outreach_angle, next_action]
+      properties:
+        offer:
+          type: string
+        rationale:
+          type: string
+        outreach_angle:
+          type: string
+        next_action:
+          type: string
+        proof_points:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendationProofPoint"
+    RecommendationProofPoint:
+      type: object
+      required: [contribution, label, last_seen_at, source_count, summary]
+      properties:
+        contribution:
+          type: number
+        label:
+          type: string
+        last_seen_at:
+          type: string
+        source_count:
+          type: number
+        summary:
+          type: string
+    CompanyDetail:
+      type: object
+      required: [company, signals, observations, people, events, outcomes, score_history]
+      properties:
+        company:
+          $ref: "#/components/schemas/Company"
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Signal"
+        observations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Observation"
+        people:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        recommendation:
+          oneOf:
+            - $ref: "#/components/schemas/Recommendation"
+            - type: "null"
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        outcomes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        score_history:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    CompanyDetailResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/CompanyDetail"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    OutcomeInput:
+      type: object
+      required: [outcome_type]
+      properties:
+        outcome_type:
+          type: string
+          enum: [accepted, rejected, contacted, positive_reply, negative_reply, meeting, opportunity, won, lost, disqualified, suppression_correct, suppression_wrong]
+        note:
+          type: string
+    OutcomeResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ObservationCompanyInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+        industry:
+          type: string
+        employee_count:
+          type: number
+        city:
+          type: string
+        state:
+          type: string
+    ObservationInput:
+      type: object
+      required: [source, external_id, type, title, confidence, company, attributes]
+      properties:
+        source:
+          type: string
+        external_id:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        url:
+          type: string
+
+        confidence:
+          type: number
+          minimum: 0.05
+          maximum: 1
+        observed_at:
+          type: string
+          format: date-time
+        company:
+          $ref: "#/components/schemas/ObservationCompanyInput"
+        attributes:
+          type: object
+          additionalProperties: true
+    ObservationBatchInput:
+      type: object
+      required: [records]
+      properties:
+        records:
+          type: array
+          minItems: 1
+          maxItems: 5000
+          items:
+            $ref: "#/components/schemas/ObservationInput"
+    IngestionResult:
+      type: object
+      required: [seen, inserted, duplicates, rejected]
+      properties:
+        seen:
+          type: number
+        inserted:
+          type: number
+        duplicates:
+          type: number
+        rejected:
+          type: number
+        signals:
+          type: number
+        signals_created:
+          type: number
+    IngestionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/IngestionResult"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    SignalsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Signal"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    Connector:
+      type: object
+      required: [connector_key, label, category, provider, mode, cadence, enabled, configured, status, implemented, run_count]
+      properties:
+        connector_key:
+          type: string
+        label:
+          type: string
+        category:
+          type: string
+        provider:
+          type: string
+        mode:
+          type: string
+        cadence:
+          type: string
+        enabled:
+          type: boolean
+        configured:
+          type: boolean
+        implemented:
+          type: boolean
+        status:
+          type: string
+        run_count:
+          type: number
+        last_run_at:
+          type: ["string", "null"]
+          format: date-time
+        last_error:
+          type: ["string", "null"]
+        config:
+          type: object
+          additionalProperties: true
+    ConnectorsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Connector"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ConnectorUpdate:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+    ConnectorResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Connector"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    DataQuality:
+      type: object
+      required: [observations, rejections, identity, stale_companies, connector_health, source_freshness]
+      properties:
+        observations:
+          type: object
+          required: [total, ingested_24h, ingested_7d, average_confidence]
+          properties:
+            total:
+              type: number
+            ingested_24h:
+              type: number
+            ingested_7d:
+              type: number
+            average_confidence:
+              type: number
+        rejections:
+          type: object
+          required: [total, rejection_rate_7d]
+          properties:
+            total:
+              type: number
+            rejected_24h:
+              type: number
+            rejected_7d:
+              type: number
+            rejection_rate_7d:
+              type: number
+        identity:
+          type: object
+          required: [companies, missing_domain, needs_review, average_confidence]
+          properties:
+            companies:
+              type: number
+            missing_domain:
+              type: number
+            needs_review:
+              type: number
+            average_confidence:
+              type: number
+        stale_companies:
+          type: number
+        connector_health:
+          type: object
+          required: [errors, degraded, enabled]
+          properties:
+            errors:
+              type: number
+            degraded:
+              type: number
+            enabled:
+              type: number
+        source_freshness:
+          type: array
+          items:
+            type: object
+            required: [source, observations, average_confidence]
+            properties:
+              source:
+                type: string
+              observations:
+                type: number
+              latest_observation:
+                type: ["string", "null"]
+              latest_retrieval:
+                type: ["string", "null"]
+              average_confidence:
+                type: number
+              retrieval_time_pct:
+                type: number
+    DataQualityResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/DataQuality"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ReviewQueueResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewQueueItem"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ReviewQueueItem:
+      type: object
+      required: [id, name, identity_confidence, identity_method, opportunity_score, opportunity_tier]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        domain:
+          type: ["string", "null"]
+        industry:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        identity_confidence:
+          type: number
+        identity_method:
+          type: string
+        opportunity_score:
+          type: number
+        opportunity_tier:
+          type: string
+          enum: [hot, warm, watch, cold, suppressed]
+        last_observed_at:
+          type: ["string", "null"]

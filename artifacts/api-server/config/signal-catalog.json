@@ -1,0 +1,157 @@
+[
+  {
+    "key":"funding_recent","label":"Fresh funding","category":"capital","dimension":"timing","weight":22,"halfLifeDays":60,"polarity":1,
+    "description":"The company recently raised capital and is likely to have a growth mandate.","offer":"Growth Creative System","play":"Connect the new growth mandate to a repeatable hook-testing system.",
+    "match":{"types":["funding"],"any":[{"path":"attributes.amount","op":"gte","value":1},{"path":"body","op":"contains_any","value":["raised","funding","series a","series b","seed round"]}]}
+  },
+  {
+    "key":"new_marketing_leader","label":"New marketing leader","category":"leadership","dimension":"timing","weight":24,"halfLifeDays":90,"polarity":1,
+    "description":"A new marketing decision-maker is entering a high-change window.","offer":"First 90 Days Hook Diagnostic","play":"Offer a fast baseline of current creative, audience response and immediate wins.",
+    "match":{"types":["leadership_change"],"any":[{"path":"attributes.role","op":"contains_any","value":["cmo","chief marketing","vp marketing","head of growth","brand director","creative director"]},{"path":"title","op":"contains_any","value":["cmo","marketing chief","head of growth"]}]}
+  },
+  {
+    "key":"product_launch","label":"Product launch","category":"launch","dimension":"timing","weight":20,"halfLifeDays":30,"polarity":1,
+    "description":"A product, service or major feature is entering the market.","offer":"Launch Hook Lab","play":"Build and test the launch narrative across paid and organic creative.",
+    "match":{"types":["product_launch"],"any":[{"path":"title","op":"contains_any","value":["launch","introduces","unveils","now available"]},{"path":"attributes.is_new","op":"eq","value":true}]}
+  },
+  {
+    "key":"market_expansion","label":"Market expansion","category":"growth","dimension":"timing","weight":18,"halfLifeDays":60,"polarity":1,
+    "description":"The company is entering a new geography, segment or distribution channel.","offer":"Market Entry Hook System","play":"Translate the brand into locally relevant hooks for the new audience.",
+    "match":{"types":["expansion","location_event"],"any":[{"path":"body","op":"contains_any","value":["new market","expands to","new region","new location","grand opening","international expansion"]},{"path":"attributes.new_locations","op":"gte","value":1}]}
+  },
+  {
+    "key":"major_partnership","label":"Major partnership","category":"growth","dimension":"timing","weight":14,"halfLifeDays":45,"polarity":1,
+    "description":"A partnership creates a new story and distribution moment.","offer":"Partnership Amplification Sprint","play":"Turn the partnership announcement into audience-specific creative angles.",
+    "match":{"types":["partnership"],"any":[{"path":"attributes.material","op":"eq","value":true},{"path":"title","op":"contains_any","value":["partners with","strategic partnership","collaboration"]}]}
+  },
+  {
+    "key":"contract_award","label":"Contract or grant awarded","category":"capital","dimension":"timing","weight":16,"halfLifeDays":75,"polarity":1,
+    "description":"A meaningful contract creates budget, legitimacy and a communications need.","offer":"Momentum Narrative Sprint","play":"Use the award as proof while translating it into buyer-facing hooks.",
+    "match":{"types":["contract_award","grant_award"],"any":[{"path":"attributes.amount","op":"gte","value":50000},{"path":"title","op":"contains_any","value":["awarded","wins contract","receives grant"]}]}
+  },
+  {
+    "key":"marketing_hiring_surge","label":"Marketing hiring surge","category":"hiring","dimension":"intent","weight":20,"halfLifeDays":45,"polarity":1,
+    "description":"Multiple marketing hires indicate active investment and an execution gap.","offer":"Fractional Creative Intelligence","play":"Help the growing team establish hooks and test infrastructure while it staffs up.",
+    "match":{"types":["job_posting","hiring_metric"],"any":[{"path":"attributes.marketing_openings_30d","op":"gte","value":3},{"path":"attributes.role","op":"contains_any","value":["performance marketing","creative strategist","growth marketing","content strategist","paid social"]}]}
+  },
+  {
+    "key":"agency_search","label":"Agency or partner search","category":"intent","dimension":"intent","weight":32,"halfLifeDays":21,"polarity":1,
+    "description":"The company is explicitly evaluating an agency, consultant or creative partner.","offer":"Hook Point Working Session","play":"Respond directly to the stated brief with an evidence-backed opportunity map.",
+    "match":{"types":["job_posting","rfp","social_post","news"],"any":[{"path":"body","op":"contains_any","value":["seeking an agency","agency partner","request for proposal","creative partner","marketing consultant","looking for an agency"]},{"path":"attributes.explicit_agency_search","op":"eq","value":true}]}
+  },
+  {
+    "key":"ad_activity_started","label":"Advertising started","category":"advertising","dimension":"intent","weight":16,"halfLifeDays":21,"polarity":1,
+    "description":"The company has begun running paid media.","offer":"Paid Creative Hook Audit","play":"Review whether the new campaign has enough message and creative variation.",
+    "match":{"types":["ad_snapshot"],"all":[{"path":"attributes.active_ads","op":"gte","value":1}],"any":[{"path":"attributes.previous_active_ads","op":"eq","value":0},{"path":"attributes.is_new_advertiser","op":"eq","value":true}]}
+  },
+  {
+    "key":"ad_volume_spike","label":"Advertising volume spike","category":"advertising","dimension":"intent","weight":20,"halfLifeDays":14,"polarity":1,
+    "description":"Paid campaign volume increased materially, indicating budget and urgency.","offer":"Creative Scale Program","play":"Match the spend increase with a larger, measured hook portfolio.",
+    "match":{"types":["ad_snapshot"],"any":[{"path":"attributes.active_ads_delta_pct","op":"gte","value":50},{"path":"attributes.new_ads_7d","op":"gte","value":10}]}
+  },
+  {
+    "key":"creative_fatigue","label":"Creative fatigue","category":"creative_need","dimension":"need","weight":28,"halfLifeDays":21,"polarity":1,
+    "description":"The company is repeating or overextending paid creative.","offer":"Creative Refresh Sprint","play":"Show the repeated concepts and propose distinct hooks built around audience tensions.",
+    "match":{"types":["ad_snapshot","creative_metric"],"any":[{"path":"attributes.median_creative_age_days","op":"gte","value":21},{"path":"attributes.duplicate_creative_ratio","op":"gte","value":0.55},{"path":"attributes.frequency","op":"gte","value":4}]}
+  },
+  {
+    "key":"low_hook_diversity","label":"Low hook diversity","category":"creative_need","dimension":"need","weight":26,"halfLifeDays":30,"polarity":1,
+    "description":"Most active ads rely on the same concept, opening or claim.","offer":"Hook Portfolio Build","play":"Quantify concept concentration and introduce a structured testing matrix.",
+    "match":{"types":["creative_metric"],"any":[{"path":"attributes.hook_diversity_score","op":"lte","value":35},{"path":"attributes.dominant_hook_share","op":"gte","value":0.7}]}
+  },
+  {
+    "key":"social_engagement_decline","label":"Social engagement declining","category":"creative_need","dimension":"need","weight":22,"halfLifeDays":21,"polarity":1,
+    "description":"Content output is no longer earning proportional audience response.","offer":"Attention Recovery Sprint","play":"Identify the exhausted message pattern and mine new hooks from audience language.",
+    "match":{"types":["social_metric"],"any":[{"path":"attributes.engagement_delta_pct","op":"lte","value":-20},{"path":"attributes.engagement_rate_delta_pct","op":"lte","value":-20}]}
+  },
+  {
+    "key":"content_breakout","label":"Breakout content","category":"momentum","dimension":"timing","weight":18,"halfLifeDays":10,"polarity":1,
+    "description":"A piece of content is performing far above the brand baseline.","offer":"Breakout Hook Amplification","play":"Extract the winning premise and scale it before the attention window closes.",
+    "match":{"types":["social_metric"],"any":[{"path":"attributes.performance_vs_baseline","op":"gte","value":2},{"path":"attributes.views_delta_pct","op":"gte","value":100}]}
+  },
+  {
+    "key":"search_demand_spike","label":"Search demand spike","category":"demand","dimension":"timing","weight":17,"halfLifeDays":14,"polarity":1,
+    "description":"Brand or category search demand is rising quickly.","offer":"Demand Capture Hook Sprint","play":"Align paid and organic messaging with the emerging search intent.",
+    "match":{"types":["search_trend"],"any":[{"path":"attributes.interest_delta_pct","op":"gte","value":30},{"path":"attributes.breakout","op":"eq","value":true}]}
+  },
+  {
+    "key":"traffic_spike","label":"Traffic spike","category":"demand","dimension":"timing","weight":15,"halfLifeDays":14,"polarity":1,
+    "description":"The company is receiving an unusual increase in attention.","offer":"Attention-to-Action Audit","play":"Help convert the temporary attention into durable customer demand.",
+    "match":{"types":["traffic_metric"],"any":[{"path":"attributes.visits_delta_pct","op":"gte","value":35},{"path":"attributes.referral_spike","op":"eq","value":true}]}
+  },
+  {
+    "key":"conversion_gap","label":"Conversion gap","category":"creative_need","dimension":"need","weight":30,"halfLifeDays":30,"polarity":1,
+    "description":"Attention or spend is growing while conversion performance is weak.","offer":"Hook-to-Conversion Diagnostic","play":"Trace the promise from ad opening through landing page and rebuild message continuity.",
+    "match":{"types":["conversion_metric","campaign_metric"],"any":[{"path":"attributes.conversion_rate_delta_pct","op":"lte","value":-20},{"path":"attributes.high_traffic_low_conversion","op":"eq","value":true},{"path":"attributes.cac_delta_pct","op":"gte","value":25}]}
+  },
+  {
+    "key":"website_rebrand","label":"Rebrand or major website change","category":"brand_change","dimension":"timing","weight":17,"halfLifeDays":30,"polarity":1,
+    "description":"The company changed its identity, positioning or central message.","offer":"Message-Market Hook Audit","play":"Test whether the new positioning translates into compelling audience-first hooks.",
+    "match":{"types":["website_change","technology_change"],"any":[{"path":"attributes.change_type","op":"in","value":["rebrand","homepage_rewrite","domain_change","new_site"]},{"path":"body","op":"contains_any","value":["new brand","new look","rebrand","redesigned website"]}]}
+  },
+  {
+    "key":"pricing_change","label":"Pricing or packaging changed","category":"commercial_change","dimension":"timing","weight":13,"halfLifeDays":21,"polarity":1,
+    "description":"A commercial change requires clear value communication.","offer":"Value Proposition Hook Lab","play":"Translate the new package and price into concrete, audience-specific value.",
+    "match":{"types":["website_change","product_launch"],"any":[{"path":"attributes.change_type","op":"eq","value":"pricing"},{"path":"title","op":"contains_any","value":["new pricing","pricing update","new plan"]}]}
+  },
+  {
+    "key":"technology_upgrade","label":"Marketing technology upgrade","category":"technology","dimension":"intent","weight":12,"halfLifeDays":45,"polarity":1,
+    "description":"New advertising, analytics or lifecycle technology indicates investment readiness.","offer":"Creative Intelligence Activation","play":"Connect the new stack to a disciplined hook experimentation program.",
+    "match":{"types":["technology_change"],"any":[{"path":"attributes.added_category","op":"contains_any","value":["advertising","analytics","personalization","marketing automation","conversion optimization"]},{"path":"attributes.marketing_stack_added","op":"eq","value":true}]}
+  },
+  {
+    "key":"review_decline","label":"Customer sentiment declining","category":"customer_voice","dimension":"need","weight":20,"halfLifeDays":30,"polarity":1,
+    "description":"Ratings or review sentiment have deteriorated.","offer":"Voice-of-Customer Hook Mining","play":"Separate delivery problems from message problems and use authentic customer language carefully.",
+    "match":{"types":["review_metric"],"any":[{"path":"attributes.rating_delta","op":"lte","value":-0.3},{"path":"attributes.negative_share_delta_pct","op":"gte","value":20}]}
+  },
+  {
+    "key":"review_velocity_spike","label":"Review velocity spike","category":"momentum","dimension":"timing","weight":13,"halfLifeDays":14,"polarity":1,
+    "description":"Customer activity or attention has increased materially.","offer":"Customer Proof Amplification","play":"Turn the current customer language and proof into credible creative angles.",
+    "match":{"types":["review_metric"],"any":[{"path":"attributes.review_velocity_delta_pct","op":"gte","value":50},{"path":"attributes.reviews_7d","op":"gte","value":25}]}
+  },
+  {
+    "key":"competitor_campaign","label":"Competitor campaign pressure","category":"competition","dimension":"need","weight":15,"halfLifeDays":21,"polarity":1,
+    "description":"A competitor is increasing advertising or winning audience attention.","offer":"Competitive Hook Counterprogram","play":"Find a differentiated attention territory instead of copying the competitor's message.",
+    "match":{"types":["competitor_event"],"any":[{"path":"attributes.ad_volume_delta_pct","op":"gte","value":50},{"path":"attributes.share_of_voice_delta_pct","op":"gte","value":20},{"path":"attributes.major_launch","op":"eq","value":true}]}
+  },
+  {
+    "key":"event_window","label":"Upcoming event or seasonal window","category":"event","dimension":"timing","weight":14,"halfLifeDays":21,"polarity":1,
+    "description":"An approaching event creates a finite audience-attention window.","offer":"Event Hook Playbook","play":"Prepare event-specific hooks and activate before demand peaks.",
+    "match":{"types":["event","seasonal_event"],"all":[{"path":"attributes.days_until","op":"gte","value":0}],"any":[{"path":"attributes.days_until","op":"lte","value":45},{"path":"attributes.is_material","op":"eq","value":true}]}
+  },
+  {
+    "key":"high_first_party_intent","label":"High first-party intent","category":"first_party","dimension":"intent","weight":35,"halfLifeDays":7,"polarity":1,
+    "description":"A known account is showing direct buying or evaluation behavior.","offer":"Priority Strategy Session","play":"Route immediately to an owner with the specific behavior and relevant proof.",
+    "match":{"types":["crm_activity","web_intent"],"any":[{"path":"attributes.pricing_page_visits_7d","op":"gte","value":2},{"path":"attributes.demo_requested","op":"eq","value":true},{"path":"attributes.reply_sentiment","op":"eq","value":"positive"},{"path":"attributes.intent_score","op":"gte","value":75}]}
+  },
+  {
+    "key":"existing_relationship","label":"Existing relationship","category":"first_party","dimension":"intent","weight":18,"halfLifeDays":180,"polarity":1,
+    "description":"The account has a prior customer, partner, referral or conversation relationship.","offer":"Relationship-Led Opportunity Review","play":"Use the known relationship and new trigger rather than sending cold outreach.",
+    "match":{"types":["crm_activity"],"any":[{"path":"attributes.relationship","op":"in","value":["customer","former_customer","partner","referral","open_opportunity"]},{"path":"attributes.previous_meetings","op":"gte","value":1}]}
+  },
+  {
+    "key":"location_opening","label":"New physical location","category":"local","dimension":"timing","weight":21,"halfLifeDays":45,"polarity":1,
+    "description":"A physical opening creates a local awareness and conversion deadline.","offer":"Grand Opening Hook System","play":"Build local creative around the opening window, neighborhood and customer occasion.",
+    "match":{"types":["location_event","permit"],"any":[{"path":"attributes.event","op":"in","value":["opening","permit_approved","lease_signed","relocation"]},{"path":"title","op":"contains_any","value":["grand opening","new location","coming soon"]}]}
+  },
+  {
+    "key":"acquisition_change","label":"Acquisition or merger","category":"corporate_change","dimension":"timing","weight":16,"halfLifeDays":90,"polarity":1,
+    "description":"A corporate combination creates positioning, audience and integration work.","offer":"Post-Deal Narrative System","play":"Clarify what changed, why it matters and how each audience should understand it.",
+    "match":{"types":["acquisition","merger"],"any":[{"path":"attributes.material","op":"eq","value":true},{"path":"title","op":"contains_any","value":["acquires","merger","acquisition"]}]}
+  },
+  {
+    "key":"budget_pressure","label":"Marketing efficiency pressure","category":"performance","dimension":"need","weight":24,"halfLifeDays":45,"polarity":1,
+    "description":"The company is under pressure to improve marketing efficiency.","offer":"Creative Efficiency Diagnostic","play":"Position hook quality as the fastest controllable lever before cutting distribution.",
+    "match":{"types":["earnings","campaign_metric","news"],"any":[{"path":"attributes.roas_delta_pct","op":"lte","value":-20},{"path":"attributes.cac_delta_pct","op":"gte","value":25},{"path":"body","op":"contains_any","value":["marketing efficiency","customer acquisition costs","reduce marketing spend","improve return on ad spend"]}]}
+  },
+  {
+    "key":"active_crisis","label":"Active crisis","category":"suppression","dimension":"risk","weight":45,"halfLifeDays":14,"polarity":-1,
+    "description":"An active safety, legal or reputational crisis makes automated sales outreach inappropriate.","offer":"Do not automate outreach","play":"Suppress automated contact and require human review.",
+    "match":{"types":["crisis","recall","legal_event"],"any":[{"path":"attributes.severity","op":"in","value":["high","critical"]},{"path":"body","op":"contains_any","value":["fatality","criminal investigation","major recall","data breach","bankruptcy filing"]}]}
+  },
+  {
+    "key":"major_layoffs","label":"Major layoffs","category":"suppression","dimension":"risk","weight":25,"halfLifeDays":45,"polarity":-1,
+    "description":"Material layoffs may reduce buying capacity or make outreach insensitive.","offer":"Human review required","play":"Delay generic outreach; verify budget and context before contact.",
+    "match":{"types":["layoff","news"],"any":[{"path":"attributes.workforce_reduction_pct","op":"gte","value":10},{"path":"body","op":"contains_any","value":["mass layoffs","workforce reduction","cuts 20%","bankruptcy"]}]}
+  }
+]

@@ -1,0 +1,1 @@
+- [Orval and Zod compatibility](orval-zod-compatibility.md) — Orval v8 can emit Zod 4-only root helpers while the workspace validator package still resolves Zod 3.

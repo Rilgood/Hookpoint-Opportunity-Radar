@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Hookpoint Opportunity Radar"
+description = "A polished market opportunity radar that helps teams discover, understand, compare, and act on emerging audience and content signals."
+version = "1.0.0"
+id = "artifacts/hookpoint-radar"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22502
+
+[services.development]
+run = "pnpm --filter @workspace/hookpoint-radar run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/hookpoint-radar", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/hookpoint-radar/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22502"
+BASE_PATH = "/"

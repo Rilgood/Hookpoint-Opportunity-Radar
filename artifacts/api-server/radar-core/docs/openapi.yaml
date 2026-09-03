@@ -1,0 +1,384 @@
+openapi: 3.1.0
+info:
+  title: Hook Point Opportunity Radar API
+  version: 1.1.0
+  description: Canonical ingestion, evidence, scoring and connector control for Hook Point warm-lead intelligence.
+servers:
+  - url: http://localhost:8787
+security:
+  - ApiKey: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Liveness check
+      responses:
+        "200": { description: Service is alive }
+  /ready:
+    get:
+      security: []
+      summary: Readiness check
+      responses:
+        "200": { description: Storage is ready }
+        "503": { description: Schema, authentication or durable-storage readiness failed }
+  /api/v1/meta:
+    get:
+      summary: Runtime, scoring and implemented-connector metadata
+      responses:
+        "200": { description: Runtime metadata }
+  /api/v1/dashboard:
+    get:
+      summary: Portfolio metrics
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Envelope" }
+  /api/v1/companies:
+    get:
+      summary: List ranked companies
+      parameters:
+        - { in: query, name: tier, schema: { type: string, enum: [hot, warm, watch, cold, suppressed] } }
+        - { in: query, name: industry, schema: { type: string } }
+        - { in: query, name: min_score, schema: { type: number } }
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses:
+        "200": { description: Paged companies }
+    post:
+      summary: Create a company
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompanyIdentity" }
+      responses:
+        "201": { description: Company created }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/companies/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    get:
+      summary: Get complete company evidence packet
+      responses:
+        "200": { description: Company, signals, observations, buyers, recommendation and timeline }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Update company workflow/profile fields
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompanyInput" }
+      responses:
+        "200": { description: Company updated }
+    delete:
+      summary: Permanently delete a company, its evidence and associated contacts (administrator only)
+      responses:
+        "200": { description: Company data deleted }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/companies/{id}/outcomes:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    post:
+      summary: Record a human label, sales outcome or revenue result
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome_type]
+              properties:
+                outcome_type: { type: string, enum: [accepted, rejected, contacted, positive_reply, negative_reply, meeting, opportunity, won, lost, disqualified, suppression_correct, suppression_wrong] }
+                signal_key: { type: string }
+                amount: { type: number }
+                note: { type: string }
+                occurred_at: { type: string, format: date-time }
+                metadata: { type: object, additionalProperties: true }
+      responses:
+        "201": { description: Outcome recorded }
+  /api/v1/ingest:
+    post:
+      summary: Ingest up to 5,000 canonical observations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: array
+                  items: { $ref: "#/components/schemas/Observation" }
+                - type: object
+                  required: [records]
+                  properties:
+                    source: { type: string }
+                    records:
+                      type: array
+                      maxItems: 5000
+                      items: { $ref: "#/components/schemas/Observation" }
+      responses:
+        "200": { description: Batch processed without rejects }
+        "207": { description: Batch partially accepted; inspect errors }
+        "413": { $ref: "#/components/responses/Error" }
+  /api/v1/webhooks/{source}:
+    parameters:
+      - { in: path, name: source, required: true, schema: { type: string } }
+      - { in: header, name: X-Hookpoint-Timestamp, required: true, schema: { type: string }, description: Unix seconds, Unix milliseconds or ISO timestamp within five minutes }
+      - { in: header, name: X-Hookpoint-Signature, required: true, schema: { type: string }, description: SHA-256 HMAC of timestamp + period + URL source + period + exact request bytes }
+    post:
+      summary: Ingest a signed provider webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { $ref: "#/components/schemas/Observation" }
+                - type: object
+                  properties:
+                    records:
+                      type: array
+                      items: { $ref: "#/components/schemas/Observation" }
+      responses:
+        "200": { description: Webhook processed without rejects }
+        "401": { $ref: "#/components/responses/Error" }
+        "409": { description: Valid signature was already processed }
+  /api/v1/ingestion/rejections:
+    get:
+      summary: List non-sensitive rejected-record telemetry (administrator only)
+      parameters:
+        - { in: query, name: source, schema: { type: string } }
+        - { in: query, name: error_code, schema: { type: string } }
+        - { in: query, name: connector_run_id, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses:
+        "200": { description: Paged rejection ledger without raw provider payloads }
+  /api/v1/signals:
+    get:
+      summary: List inferred signals with account context
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [active, expired] } }
+        - { in: query, name: category, schema: { type: string } }
+        - { in: query, name: company_id, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, maximum: 200 } }
+      responses:
+        "200": { description: Signals }
+  /api/v1/signal-catalog:
+    get:
+      summary: Retrieve signal definitions and rule metadata
+      responses:
+        "200": { description: Signal catalog }
+  /api/v1/connectors:
+    get:
+      summary: Connector configuration and runtime state
+      responses:
+        "200": { description: Connectors }
+  /api/v1/connectors/runs:
+    get:
+      summary: Recent connector run counts, failures, durations and cursors (administrator only)
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses:
+        "200": { description: Connector runs }
+  /api/v1/connectors/{key}:
+    parameters:
+      - { in: path, name: key, required: true, schema: { type: string } }
+    patch:
+      summary: Enable or disable a connector and optionally set non-secret schedule input
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+                schedule_input: { type: object, additionalProperties: true }
+      responses:
+        "200": { description: Connector updated }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/connectors/{key}/run:
+    parameters:
+      - { in: path, name: key, required: true, schema: { type: string } }
+    post:
+      summary: Run a pull connector (administrator only)
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+            description: Use reset_cursor=true for a one-time run that must ignore the saved provider cursor.
+      responses:
+        "200": { description: Connector completed and results ingested }
+        "501": { $ref: "#/components/responses/Error" }
+  /api/v1/rescore:
+    post:
+      summary: Recompute due tenant opportunity scores in a bounded batch
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                due_only: { type: boolean, default: true }
+                limit: { type: integer, minimum: 1, maximum: 5000, default: 1000 }
+      responses:
+        "200": { description: Recompute complete }
+  /api/v1/export/companies.csv:
+    get:
+      summary: Export ranked accounts as CSV
+      responses:
+        "200":
+          description: CSV export
+          content:
+            text/csv: { schema: { type: string } }
+  /api/v1/audit:
+    get:
+      summary: Read mutation audit events
+      responses:
+        "200": { description: Audit events }
+  /api/v1/analytics/outcomes:
+    get:
+      summary: Outcome rates by score band and leading signal
+      responses:
+        "200": { description: Calibration metrics }
+  /api/v1/data-quality:
+    get:
+      summary: Observation, rejection, identity, source-freshness and connector health
+      responses:
+        "200": { description: Data quality summary }
+  /api/v1/review-queue:
+    get:
+      summary: Accounts requiring identity or suppression review
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses:
+        "200": { description: Review queue }
+  /api/v1/api-keys:
+    get:
+      summary: List API-key metadata without secret hashes
+      responses:
+        "200": { description: API-key metadata }
+    post:
+      summary: Create a scoped API key; plaintext token is returned once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scopes]
+              properties:
+                name: { type: string, maxLength: 200 }
+                scopes:
+                  type: array
+                  items: { type: string, enum: [read, write, admin] }
+      responses:
+        "201": { description: API key created }
+  /api/v1/api-keys/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    delete:
+      summary: Revoke an API key
+      responses:
+        "200": { description: API key revoked }
+        "409": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  responses:
+    Error:
+      description: Error envelope
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { $ref: "#/components/schemas/Error" }
+              meta:
+                type: object
+                properties:
+                  request_id: { type: string }
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        data: {}
+        meta:
+          type: object
+          properties:
+            request_id: { type: string }
+            duration_ms: { type: integer }
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: {}
+    CompanyInput:
+      type: object
+      properties:
+        name: { type: string, maxLength: 300 }
+        domain: { type: string }
+        website_url: { type: string, format: uri }
+        linkedin_url: { type: string, format: uri }
+        industry: { type: string }
+        subindustry: { type: string }
+        employee_count: { type: integer, minimum: 0 }
+        annual_revenue: { type: number, minimum: 0 }
+        city: { type: string }
+        state: { type: string }
+        country: { type: string }
+        owner_name: { type: string }
+        crm_id: { type: string }
+        status: { type: string, enum: [prospect, accepted, rejected, contacted, replied, meeting, opportunity, customer, lost, disqualified] }
+        monitoring_tier: { type: string, enum: [universe, qualified, watchlist, hot] }
+    CompanyIdentity:
+      allOf:
+        - { $ref: "#/components/schemas/CompanyInput" }
+        - anyOf:
+            - required: [name]
+            - required: [domain]
+            - required: [website_url]
+    Person:
+      type: object
+      required: [full_name]
+      properties:
+        full_name: { type: string }
+        title: { type: string }
+        seniority: { type: string }
+        department: { type: string }
+        email: { type: string, format: email }
+        linkedin_url: { type: string, format: uri }
+        is_decision_maker: { type: boolean }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+    Observation:
+      type: object
+      required: [type, title, company]
+      properties:
+        source: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,99}$", description: Required unless supplied by the ingestion envelope or webhook path. }
+        external_id: { type: string, maxLength: 500 }
+        type: { type: string }
+        title: { type: string, maxLength: 500 }
+        body: { type: string, maxLength: 20000 }
+        url: { type: string, format: uri }
+        observed_at: { type: string, format: date-time }
+        retrieved_at: { type: string, format: date-time }
+        event_time_quality: { type: string, enum: [reported, provider_estimated, retrieval_time] }
+        normalizer_version: { type: string, maxLength: 100 }
+        confidence: { type: number, minimum: 0.05, maximum: 1 }
+        raw_ref: { type: string, maxLength: 1000 }
+        company: { $ref: "#/components/schemas/CompanyIdentity" }
+        attributes: { type: object, additionalProperties: true }
+        people:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/Person" }
