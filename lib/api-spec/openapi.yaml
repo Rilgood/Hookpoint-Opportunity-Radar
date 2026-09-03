@@ -209,6 +209,67 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConnectorResponse"
+  /v1/connectors/{key}/run:
+    post:
+      operationId: runRadarConnector
+      tags: [radar]
+      summary: Run a configured pull connector
+      description: Runs a connector as an administrator and ingests the observations it returns.
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorRunInput"
+      responses:
+        "200":
+          description: Connector completed and results were ingested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorRunResponse"
+        "400":
+          description: Invalid connector input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator access is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Connector cannot run in its current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Connector input was understood but could not be processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "501":
+          description: Connector adapter is not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /v1/data-quality:
     get:
       operationId: getRadarDataQuality
@@ -736,6 +797,11 @@ components:
       properties:
         enabled:
           type: boolean
+        schedule_input:
+          type: object
+          description: Non-secret connector input saved for recurring runs. Credentials, API keys, access tokens, passwords, and other secrets are forbidden. reset_cursor is reserved for one-time runs and must not appear in schedule_input.
+          maxProperties: 50
+          additionalProperties: true
     ConnectorResponse:
       type: object
       required: [data, meta]
@@ -744,6 +810,175 @@ components:
           $ref: "#/components/schemas/Connector"
         meta:
           $ref: "#/components/schemas/ResponseMeta"
+    ConnectorRunCompanyInput:
+      type: object
+      description: Optional public identity hints for the company targeted by the connector.
+      maxProperties: 20
+      additionalProperties: true
+      properties:
+        name:
+          type: string
+          maxLength: 300
+        domain:
+          type: string
+          maxLength: 253
+    ConnectorRunInput:
+      type: object
+      description: Connector-specific, non-secret input. Credentials, API keys, access tokens, passwords, and other secrets are forbidden; configure credentials through the server's secret store. The payload may not exceed the runtime's 1 MB limit. Use reset_cursor to ignore a saved provider cursor for this one run.
+      maxProperties: 50
+      additionalProperties: true
+      properties:
+        company:
+          $ref: "#/components/schemas/ConnectorRunCompanyInput"
+        spreadsheet_url:
+          type: string
+          maxLength: 2048
+        spreadsheet_id:
+          type: string
+          maxLength: 256
+        range:
+          type: string
+          maxLength: 300
+        query:
+          type: string
+          maxLength: 1000
+        forms:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            maxLength: 100
+        organization_name:
+          type: string
+          maxLength: 200
+        cik:
+          type: string
+          maxLength: 20
+        npi:
+          type: string
+          maxLength: 20
+        state:
+          type: string
+          maxLength: 100
+        skip:
+          type: number
+          minimum: 0
+          maximum: 1000
+        page:
+          type: number
+          minimum: 1
+          maximum: 1000
+        award_type_codes:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            maxLength: 20
+        start_date:
+          type: string
+          maxLength: 10
+        end_date:
+          type: string
+          maxLength: 10
+        from:
+          type: string
+          maxLength: 10
+        to:
+          type: string
+          maxLength: 10
+        cursor:
+          type: object
+          maxProperties: 20
+          additionalProperties: true
+        limit:
+          type: number
+          minimum: 1
+          maximum: 100
+        reset_cursor:
+          type: boolean
+          description: Ignore the saved provider cursor for this one-time run. This field must not be stored in schedule_input.
+    ConnectorRunError:
+      type: object
+      required: [index, code, message]
+      properties:
+        index:
+          type: number
+          minimum: 0
+        code:
+          type: string
+        message:
+          type: string
+    ConnectorRunResult:
+      type: object
+      required: [run_id, connector, status, cursor, resumed, seen, inserted, duplicates, rejected, signals, signals_created, people, companies, errors]
+      properties:
+        run_id:
+          type: string
+        connector:
+          type: string
+        status:
+          type: string
+          enum: [succeeded, partial]
+        cursor:
+          type: ["object", "null"]
+          additionalProperties: true
+        resumed:
+          type: boolean
+        seen:
+          type: number
+        inserted:
+          type: number
+        duplicates:
+          type: number
+        rejected:
+          type: number
+        signals:
+          type: number
+        signals_created:
+          type: number
+        people:
+          type: number
+        companies:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/ConnectorRunError"
+    ConnectorRunResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/ConnectorRunResult"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          description: Optional structured context for the error.
+    ErrorResponseMeta:
+      type: object
+      required: [request_id]
+      properties:
+        request_id:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [error, meta]
+      properties:
+        error:
+          $ref: "#/components/schemas/ApiError"
+        meta:
+          $ref: "#/components/schemas/ErrorResponseMeta"
     DataQuality:
       type: object
       required: [observations, rejections, identity, stale_companies, connector_health, source_freshness]

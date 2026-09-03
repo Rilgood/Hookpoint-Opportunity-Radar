@@ -1,6 +1,8 @@
+import { useState } from "react";
 import {
   useListRadarConnectors,
   useUpdateRadarConnector,
+  Connector,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getListRadarConnectorsQueryKey } from "@workspace/api-client-react";
@@ -13,16 +15,21 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/loading-states";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, CheckCircle2, AlertCircle, Clock, Info, ShieldAlert } from "lucide-react";
+import { Plug, CheckCircle2, AlertCircle, Clock, Info, ShieldAlert, Settings } from "lucide-react";
 import { humanizeLabel } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ConnectorDialog } from "@/components/sources/connector-dialog";
 
 export default function Sources() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: response, isLoading } = useListRadarConnectors();
+
+  const [selectedConnector, setSelectedConnector] = useState<Connector | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const updateMutation = useUpdateRadarConnector({
     mutation: {
@@ -45,8 +52,44 @@ export default function Sources() {
     },
   });
 
-  const handleToggle = (key: string, enabled: boolean) => {
-    updateMutation.mutate({ key, data: { enabled } });
+  const handleToggle = (connector: Connector, enabled: boolean) => {
+    if (!enabled) {
+      updateMutation.mutate({ key: connector.connector_key, data: { enabled: false } });
+      return;
+    }
+
+    const isPush = connector.mode === "push";
+    const isManual = connector.cadence === "manual";
+
+    const config = connector.config as { scheduleInput?: Record<string, unknown> } | undefined;
+    const scheduleInput = config?.scheduleInput;
+    const hasScheduleInput = Boolean(scheduleInput && Object.keys(scheduleInput).length > 0);
+
+    if (!isPush && !isManual && !hasScheduleInput) {
+      // Must configure schedule_input first for recurring pull connectors
+      setSelectedConnector(connector);
+      setDialogOpen(true);
+    } else {
+      updateMutation.mutate({ key: connector.connector_key, data: { enabled: true } });
+    }
+  };
+
+  const handleConfigure = (connector: Connector) => {
+    setSelectedConnector(connector);
+    setDialogOpen(true);
+  };
+
+  const getReadinessLabel = (connector: Connector) => {
+    if (connector.configured) return humanizeLabel(connector.status);
+
+    const key = connector.connector_key;
+    if (["gdelt", "sec_edgar", "nppes", "usa_spending"].includes(key)) {
+      return "No credentials required";
+    }
+    if (key === "google_sheets") {
+      return "Awaiting sheet binding";
+    }
+    return "Awaiting credentials";
   };
 
   if (isLoading) {
@@ -79,18 +122,24 @@ export default function Sources() {
         <AlertTitle className="font-semibold">Secure Credential Handoff</AlertTitle>
         <AlertDescription className="mt-1 text-muted-foreground">
           To maintain zero-trust security, source credentials (API keys, tokens, client secrets) are never solicited or displayed in the browser.
-          Connectors marked as <strong>Awaiting configuration</strong> require credentials to be provisioned server-side by an administrator before they can be enabled here.
+          Connectors marked as <strong>Awaiting credentials</strong> require credentials to be provisioned server-side by an administrator before they can be enabled here.
         </AlertDescription>
       </Alert>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {response?.data.map((connector) => {
           const isPush = connector.mode === "push";
+          const noKey = ["gdelt", "sec_edgar", "nppes", "usa_spending"].includes(connector.connector_key);
+          const managed = connector.connector_key === "google_sheets";
+
+          const isGoogleSheetsUnconfigured = managed && !connector.configured;
+          const needsRealConfig = !connector.configured && !noKey && !isGoogleSheetsUnconfigured;
+          const actionDisabled = !connector.implemented || (!connector.configured && !noKey);
 
           return (
             <Card
               key={connector.connector_key}
-              className={`border-2 transition-colors ${
+              className={`border-2 transition-colors flex flex-col ${
                 connector.enabled
                   ? "border-primary/30 bg-primary/[0.02] shadow-sm"
                   : "border-border/60 hover:border-border"
@@ -103,7 +152,7 @@ export default function Sources() {
                       className={`h-5 w-5 ${
                         connector.enabled
                           ? "text-primary"
-                          : connector.configured
+                          : (connector.configured || noKey || managed)
                             ? "text-muted-foreground"
                             : "text-amber-500/70"
                       }`}
@@ -118,12 +167,9 @@ export default function Sources() {
                 <div className="flex flex-col items-end gap-1">
                   <Switch
                     checked={connector.enabled}
-                    onCheckedChange={(val) =>
-                      handleToggle(connector.connector_key, val)
-                    }
+                    onCheckedChange={(val) => handleToggle(connector, val)}
                     disabled={
-                      !connector.implemented ||
-                      !connector.configured ||
+                      actionDisabled ||
                       isPush ||
                       updateMutation.isPending
                     }
@@ -132,18 +178,18 @@ export default function Sources() {
                     className="data-[state=checked]:bg-primary"
                   />
                   {isPush && (
-                    <span className="text-[10px] text-muted-foreground mt-1 bg-muted px-1.5 py-0.5 rounded">Push Mode</span>
+                    <span className="text-[10px] text-muted-foreground mt-1 bg-muted px-1.5 py-0.5 rounded font-medium">Push Mode</span>
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4 text-sm">
+              <CardContent className="space-y-4 text-sm flex-1 flex flex-col">
                 <div className="flex items-center justify-between border-t border-border/50 pt-3">
                   <span className="text-muted-foreground font-medium">Status</span>
                   <Badge
                     variant={connector.enabled ? "default" : "secondary"}
-                    className={!connector.enabled && !connector.configured ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" : ""}
+                    className={needsRealConfig ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" : ""}
                   >
-                    {!connector.configured ? "Awaiting credentials" : humanizeLabel(connector.status)}
+                    {getReadinessLabel(connector)}
                   </Badge>
                 </div>
 
@@ -164,48 +210,76 @@ export default function Sources() {
                 </div>
 
                 {/* State explanations */}
-                <div className="pt-2">
+                <div className="pt-2 flex-1">
                   {!connector.implemented && (
                     <div className="p-2.5 bg-slate-100 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 rounded-md text-xs flex items-start gap-2 border border-slate-200 dark:border-slate-700/50">
                       <Info className="h-4 w-4 mt-0.5 shrink-0" />
                       <div>
-                        <strong>In Development:</strong> This integration is planned but not yet implemented by the engineering team.
+                        <strong>In Development:</strong> This integration is planned but not yet implemented.
                       </div>
                     </div>
                   )}
-                  {connector.implemented && !connector.configured && (
+                  {connector.implemented && needsRealConfig && (
                     <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-800 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
                       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                       <div>
-                        <strong>Action Required:</strong> Provide {connector.provider} API credentials to your administrator to enable this source.
+                        <strong>Action Required:</strong> Provide API credentials to your administrator to enable this source.
                       </div>
                     </div>
                   )}
-                  {connector.implemented &&
-                    connector.configured &&
-                    isPush && (
-                      <div className="flex items-start gap-2 rounded-md bg-blue-50 dark:bg-blue-950/30 p-2.5 text-xs text-blue-800 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50">
-                        <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                        <div>
-                          <strong>Push Mode Active:</strong> This connector receives webhooks. It is permanently enabled while configured and does not require manual toggling.
-                        </div>
-                      </div>
-                    )}
-                  {connector.last_error && connector.enabled && (
-                    <div className="p-2.5 bg-destructive/10 text-destructive rounded-md text-xs flex items-start gap-2 border border-destructive/20">
+                  {connector.implemented && isGoogleSheetsUnconfigured && (
+                    <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/30 p-2.5 text-xs text-amber-800 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
                       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                       <div>
-                        <strong className="block mb-0.5">Sync Error:</strong>
+                        <strong>Action Required:</strong> The managed Replit connection is attached, but an administrator must bind an allowed sheet to this workspace via GOOGLE_SHEETS_TENANT_BINDINGS.
+                      </div>
+                    </div>
+                  )}
+                  {connector.last_error && connector.enabled && (
+                    <div className={`p-2.5 rounded-md text-xs flex items-start gap-2 border ${
+                      connector.last_error.includes('HTTP 429')
+                        ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-800/50'
+                        : 'bg-destructive/10 text-destructive border-destructive/20'
+                    }`}>
+                      {connector.last_error.includes('HTTP 429') ? (
+                        <Clock className="h-4 w-4 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      )}
+                      <div className="line-clamp-3" title={connector.last_error}>
+                        <strong className="block mb-0.5">
+                          {connector.last_error.includes('HTTP 429') ? 'Provider Throttling:' : 'Sync Error:'}
+                        </strong>
                         {connector.last_error}
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Action footer */}
+                <div className="pt-4 border-t border-border/50 mt-auto">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-center bg-background/50 backdrop-blur-sm"
+                    disabled={actionDisabled}
+                    onClick={() => handleConfigure(connector)}
+                    data-testid={`btn-configure-${connector.connector_key}`}
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Configure & Run
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           );
         })}
       </div>
+
+      <ConnectorDialog
+        connector={selectedConnector}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
     </div>
   );
 }

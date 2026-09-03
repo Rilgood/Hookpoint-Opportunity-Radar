@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { connectorCatalog } from './catalog.js';
 import { hashSecret, id, nowIso, stableJson } from '../lib.js';
+import { hasGoogleSheetsTenantBinding } from '../connectors/google-sheets.js';
 
 export function bootstrap(db, { withAdminKey = true } = {}) {
   const now = nowIso();
@@ -34,7 +35,9 @@ export function bootstrap(db, { withAdminKey = true } = {}) {
 
 export function syncConnectorCatalog(db, tenantId, now = nowIso()) {
   for (const item of connectorCatalog) {
-    const configured = requiredEnvironment(item).every((name) => configuredValue(name));
+    const configured = item.key === 'google_sheets'
+      ? hasGoogleSheetsTenantBinding(tenantId)
+      : requiredEnvironment(item).every((name) => configuredValue(name));
     const status = configured ? 'disabled' : 'needs_configuration';
     db.run(
       `INSERT OR IGNORE INTO connectors(
@@ -45,12 +48,13 @@ export function syncConnectorCatalog(db, tenantId, now = nowIso()) {
         item.cadence, 0, configured ? 1 : 0, status, stableJson({ costTier: item.costTier, keyEnv: item.keyEnv, actorEnv: item.actorEnv }), now, now]
     );
     db.run(
-      `UPDATE connectors SET label=?, category=?, provider=?, mode=?, cadence=?, configured=?,
+       `UPDATE connectors SET label=?, category=?, provider=?, mode=?, cadence=?, configured=?,
+        enabled=CASE WHEN ?=0 THEN 0 ELSE enabled END,
        status=CASE WHEN ?=0 THEN 'needs_configuration' WHEN enabled=0 THEN 'disabled'
          WHEN status IN ('error','degraded','running') THEN status ELSE 'ready' END, updated_at=?
        WHERE tenant_id = ? AND connector_key = ?`,
       [item.label, item.category, item.provider, item.mode, item.cadence, configured ? 1 : 0,
-        configured ? 1 : 0, now, tenantId, item.key]
+        configured ? 1 : 0, configured ? 1 : 0, now, tenantId, item.key]
     );
   }
 }

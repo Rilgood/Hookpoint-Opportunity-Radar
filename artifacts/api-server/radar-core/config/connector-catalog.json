@@ -25,6 +25,7 @@
   {"key":"salesforce","label":"Salesforce","category":"first_party","provider":"salesforce","mode":"push_pull","keyEnv":"SALESFORCE_CLIENT_ID","cadence":"realtime","costTier":"existing"},
   {"key":"meta_ads","label":"Meta Ads","category":"first_party_ads","provider":"meta","mode":"pull","keyEnv":"META_ACCESS_TOKEN","cadence":"hourly","costTier":"existing"},
   {"key":"google_ads","label":"Google Ads","category":"first_party_ads","provider":"google","mode":"pull","keyEnv":"GOOGLE_ADS_DEVELOPER_TOKEN","cadence":"hourly","costTier":"existing"},
+  {"key":"google_sheets","label":"Google Sheets","category":"first_party","provider":"google","mode":"pull","keyEnv":"GOOGLE_SHEETS_TENANT_BINDINGS","cadence":"daily","costTier":"existing"},
   {"key":"tiktok_ads","label":"TikTok Ads","category":"first_party_ads","provider":"tiktok","mode":"pull","keyEnv":"TIKTOK_ADS_ACCESS_TOKEN","cadence":"hourly","costTier":"existing"},
   {"key":"linkedin_ads","label":"LinkedIn Ads","category":"first_party_ads","provider":"linkedin","mode":"pull","keyEnv":"LINKEDIN_ADS_ACCESS_TOKEN","cadence":"hourly","costTier":"existing"},
   {"key":"ticketmaster","label":"Ticketmaster Discovery","category":"events","provider":"ticketmaster","mode":"pull","keyEnv":"TICKETMASTER_API_KEY","cadence":"daily","costTier":"free"},

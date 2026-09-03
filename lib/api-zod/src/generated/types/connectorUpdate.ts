@@ -5,7 +5,10 @@
  * Typed application contract for the Hook Point Opportunity Radar.
  * OpenAPI spec version: 1.1.0
  */
+import type { ConnectorUpdateScheduleInput } from './connectorUpdateScheduleInput';
 
 export interface ConnectorUpdate {
   enabled: boolean;
+  /** Non-secret connector input saved for recurring runs. Credentials, API keys, access tokens, passwords, and other secrets are forbidden. reset_cursor is reserved for one-time runs and must not appear in schedule_input. */
+  schedule_input?: ConnectorUpdateScheduleInput;
 }

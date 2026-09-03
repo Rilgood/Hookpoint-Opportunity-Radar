@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.1.0
  */
 
+export * from './apiError';
 export * from './company';
 export * from './companyDetail';
 export * from './companyDetailEventsItem';
@@ -18,8 +19,17 @@ export * from './companyStatus';
 export * from './connector';
 export * from './connectorConfig';
 export * from './connectorResponse';
+export * from './connectorRunCompanyInput';
+export * from './connectorRunError';
+export * from './connectorRunInput';
+export * from './connectorRunInputCursor';
+export * from './connectorRunResponse';
+export * from './connectorRunResult';
+export * from './connectorRunResultCursor';
+export * from './connectorRunResultStatus';
 export * from './connectorsResponse';
 export * from './connectorUpdate';
+export * from './connectorUpdateScheduleInput';
 export * from './dashboardResponse';
 export * from './dashboardSummary';
 export * from './dashboardSummaryConnectors';
@@ -32,6 +42,8 @@ export * from './dataQualityObservations';
 export * from './dataQualityRejections';
 export * from './dataQualityResponse';
 export * from './dataQualitySourceFreshnessItem';
+export * from './errorResponse';
+export * from './errorResponseMeta';
 export * from './healthStatus';
 export * from './ingestionResponse';
 export * from './ingestionResult';

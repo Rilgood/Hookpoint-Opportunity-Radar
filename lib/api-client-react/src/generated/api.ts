@@ -23,10 +23,13 @@ import type {
   CompanyDetailResponse,
   CompanyListResponse,
   ConnectorResponse,
+  ConnectorRunInput,
+  ConnectorRunResponse,
   ConnectorUpdate,
   ConnectorsResponse,
   DashboardResponse,
   DataQualityResponse,
+  ErrorResponse,
   HealthStatus,
   IngestionResponse,
   ListRadarCompaniesParams,
@@ -755,6 +758,79 @@ export const useUpdateRadarConnector = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateRadarConnectorMutationOptions(options));
+    }
+
+export const getRunRadarConnectorUrl = (key: string,) => {
+
+
+
+
+  return `/api/v1/connectors/${key}/run`
+}
+
+/**
+ * Runs a connector as an administrator and ingests the observations it returns.
+ * @summary Run a configured pull connector
+ */
+export const runRadarConnector = async (key: string,
+    connectorRunInput: ConnectorRunInput, options?: Parameters<typeof customFetch>[1]): Promise<ConnectorRunResponse> => {
+
+  return customFetch<ConnectorRunResponse>(getRunRadarConnectorUrl(key),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(connectorRunInput)
+  }
+);}
+
+
+
+
+
+export const getRunRadarConnectorMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runRadarConnector>>, TError,{key: string;data: BodyType<ConnectorRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runRadarConnector>>, TError,{key: string;data: BodyType<ConnectorRunInput>}, TContext> => {
+
+const mutationKey = ['runRadarConnector'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runRadarConnector>>, {key: string;data: BodyType<ConnectorRunInput>}> = (props) => {
+          const {key,data} = props ?? {};
+
+          return  runRadarConnector(key,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunRadarConnectorMutationResult = NonNullable<Awaited<ReturnType<typeof runRadarConnector>>>
+    export type RunRadarConnectorMutationBody = BodyType<ConnectorRunInput>
+    export type RunRadarConnectorMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Run a configured pull connector
+ */
+export const useRunRadarConnector = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runRadarConnector>>, TError,{key: string;data: BodyType<ConnectorRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runRadarConnector>>,
+        TError,
+        {key: string;data: BodyType<ConnectorRunInput>},
+        TContext
+      > => {
+      return useMutation(getRunRadarConnectorMutationOptions(options));
     }
 
 export const getGetRadarDataQualityUrl = () => {

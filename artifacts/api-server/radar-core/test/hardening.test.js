@@ -6,11 +6,12 @@ import { config } from '../src/config.js';
 import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
 import { companyDetail, exportCompaniesCsv, ingestionRejections } from '../src/services/queries.js';
 import { deleteCompany, updateCompany } from '../src/services/entities.js';
-import { setConnectorEnabled } from '../src/services/connector-runner.js';
+import { runConnector, setConnectorEnabled } from '../src/services/connector-runner.js';
 import { recordOutcome } from '../src/services/outcomes.js';
 import { rescoreCompany, rescoreDueCompanies } from '../src/services/signals.js';
 import { consumeWebhookReceipt } from '../src/services/webhooks.js';
 import { BaseConnector } from '../src/connectors/base.js';
+import { GdeltConnector } from '../src/connectors/news.js';
 import { authenticate, setTrustedPrincipal } from '../src/http/security.js';
 import { sha256 } from '../src/lib.js';
 
@@ -328,6 +329,86 @@ test('preserves provider cursor and usage metadata from a bounded connector resu
   assert.deepEqual(result.cursor, { page: 2 });
   assert.deepEqual(result.usage, { records: 1 });
   assert.equal(result.records.length, 1);
+});
+
+test('resumes a provider cursor only for the same connector input', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const received = [];
+  const originalRun = GdeltConnector.prototype.run;
+  GdeltConnector.prototype.run = async function (input) {
+    received.push(input);
+    return {
+      records: [],
+      normalizationErrors: [],
+      cursor: { page: received.length + 1 },
+      usage: {},
+    };
+  };
+  try {
+    const first = await runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'First target' }, limit: 10 });
+    const second = await runConnector(db, config.defaultTenantId, 'gdelt', { limit: 10, company: { name: 'First target' } });
+    const changed = await runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'Different target' }, limit: 10 });
+
+    assert.equal(first.resumed, false);
+    assert.equal(second.resumed, true);
+    assert.deepEqual(received[1].cursor, { page: 2 });
+    assert.equal(changed.resumed, false);
+    assert.equal(received[2].cursor, undefined);
+  } finally {
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('rejects secret-bearing manual connector input before persistence or invocation', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  let invoked = false;
+  GdeltConnector.prototype.run = async function () {
+    invoked = true;
+    return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+  };
+  try {
+    await assert.rejects(
+      runConnector(db, config.defaultTenantId, 'gdelt', { company: 'Target', api_key: 'must-not-be-here' }),
+      { code: 'unsafe_connector_input' }
+    );
+    assert.equal(invoked, false);
+    assert.equal(db.get("SELECT COUNT(*) count FROM connector_runs WHERE connector_key='gdelt'").count, 0);
+  } finally {
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('overwrites spoofed trusted tenant input without persisting it', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  let received;
+  GdeltConnector.prototype.run = async function (input) {
+    received = input;
+    return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+  };
+  try {
+    await runConnector(db, config.defaultTenantId, 'gdelt', {
+      company: 'Target',
+      trustedTenantId: 'tenant_spoofed',
+      trusted_tenant_id: 'tenant_also_spoofed',
+    });
+    assert.equal(received.trustedTenantId, config.defaultTenantId);
+    assert.equal(received.trusted_tenant_id, config.defaultTenantId);
+    assert.equal(Object.keys(received).includes('trustedTenantId'), false);
+    assert.equal(Object.keys(received).includes('trusted_tenant_id'), false);
+    const stored = db.get("SELECT metadata_json, cursor_json FROM connector_runs WHERE connector_key='gdelt'");
+    assert.doesNotMatch(stored.metadata_json, /tenant_spoofed|trustedTenant|trusted_tenant/);
+    assert.doesNotMatch(stored.cursor_json, /tenant_spoofed|trustedTenant|trusted_tenant/);
+  } finally {
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
 });
 
 test('redacts credentials from connector normalization errors', async () => {

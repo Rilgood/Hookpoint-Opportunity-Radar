@@ -3,12 +3,15 @@ import { AppError, addDays, containsSecretFields, id, isPlainObject, json, nowIs
 import { ingestBatch } from './ingestion.js';
 import { rescoreDueCompanies } from './signals.js';
 import { config } from '../config.js';
+import { hasGoogleSheetsTenantBinding } from '../connectors/google-sheets.js';
 
 const inFlight = new Set();
+const trustedTenantFields = new Set(['trustedTenantId', 'trusted_tenant_id']);
 
 export async function runConnector(db, tenantId, key, input = {}) {
   if (!isPlainObject(input)) throw new AppError(400, 'invalid_connector_input', 'Connector input must be a JSON object.');
   if (input.reset_cursor !== undefined && typeof input.reset_cursor !== 'boolean') throw new AppError(400, 'invalid_reset_cursor', 'reset_cursor must be a boolean.');
+  if (containsSecretFields(input)) throw new AppError(400, 'unsafe_connector_input', 'Store credentials in environment variables and keep connector input nesting to eight levels or fewer.');
   if (Buffer.byteLength(stableJson(input)) > 1_000_000) throw new AppError(413, 'connector_input_too_large', 'Connector input may not exceed 1 MB.');
   const row = db.get('SELECT * FROM connectors WHERE tenant_id=? AND connector_key=?', [tenantId, key]);
   if (!row) throw new AppError(404, 'connector_not_found', `Unknown connector: ${key}`);
@@ -23,13 +26,20 @@ export async function runConnector(db, tenantId, key, input = {}) {
   const runId = id('run');
   const started = nowIso();
   const startedMs = Date.now();
-  const { reset_cursor: resetCursor = false, ...requestedInput } = input;
-  const priorRun = resetCursor ? null : db.get(`SELECT provider_cursor_json FROM connector_runs
+  const resetCursor = input.reset_cursor || false;
+  const requestedInput = withoutInternalFields(input, { includeCursor: true });
+  const inputFingerprint = sha256(stableJson(withoutInternalFields(input)));
+  const priorRun = resetCursor ? null : db.get(`SELECT provider_cursor_json, cursor_json FROM connector_runs
     WHERE tenant_id=? AND connector_key=? AND status IN ('succeeded','partial')
     ORDER BY finished_at DESC LIMIT 1`, [tenantId, key]);
   const previousCursor = priorRun ? json(priorRun.provider_cursor_json, null) : null;
-  const resumed = requestedInput.cursor === undefined && hasCursor(previousCursor);
+  const previousFingerprint = priorRun ? json(priorRun.cursor_json, null)?.input_fingerprint : null;
+  const resumed = requestedInput.cursor === undefined && previousFingerprint === inputFingerprint && hasCursor(previousCursor);
   const connectorInput = resumed ? { ...requestedInput, cursor: previousCursor } : requestedInput;
+  Object.defineProperties(connectorInput, {
+    trustedTenantId: { value: tenantId },
+    trusted_tenant_id: { value: tenantId },
+  });
   db.run(`INSERT INTO connector_runs(id, tenant_id, connector_key, status, started_at, metadata_json)
     VALUES (?, ?, ?, 'running', ?, ?)`, [runId, tenantId, key, started, stableJson({ input: redactSecrets(requestedInput), resumed })]);
   db.run(`UPDATE connectors SET status='running', last_error=NULL, updated_at=? WHERE tenant_id=? AND connector_key=?`, [started, tenantId, key]);
@@ -49,9 +59,10 @@ export async function runConnector(db, tenantId, key, input = {}) {
     const lastError = outcome.rejected ? `${outcome.rejected} record(s) rejected; inspect ingestion_rejections.` : null;
     const nextCursor = collected.cursor ?? null;
     db.run(`UPDATE connector_runs SET status=?, finished_at=?, records_seen=?, records_inserted=?, records_rejected=?,
-      signals_created=?, duration_ms=?, provider_cursor_json=?, metadata_json=? WHERE id=?`,
+      signals_created=?, duration_ms=?, provider_cursor_json=?, cursor_json=?, metadata_json=? WHERE id=?`,
       [runStatus, finished, outcome.seen, outcome.inserted, outcome.rejected, outcome.signals_created, Date.now() - startedMs,
-        stableJson(nextCursor), stableJson({ input: redactSecrets(requestedInput), resumed, usage: redactSecrets(collected.usage || {}) }), runId]);
+        stableJson(nextCursor), stableJson({ input_fingerprint: inputFingerprint }),
+        stableJson({ input: redactSecrets(requestedInput), resumed, usage: redactSecrets(collected.usage || {}) }), runId]);
     db.run(`UPDATE connectors SET status=?, last_run_at=?, next_run_at=?, last_error=?, consecutive_failures=0,
       backoff_until=NULL, updated_at=? WHERE tenant_id=? AND connector_key=?`,
       [row.enabled ? (outcome.rejected ? 'degraded' : 'ready') : 'disabled', finished, nextRun(finished, row.cadence), lastError, finished, tenantId, key]);
@@ -74,6 +85,12 @@ export async function runConnector(db, tenantId, key, input = {}) {
 export function setConnectorEnabled(db, tenantId, key, enabled, settings = {}) {
   const connector = db.get('SELECT * FROM connectors WHERE tenant_id=? AND connector_key=?', [tenantId, key]);
   if (!connector) throw new AppError(404, 'connector_not_found', 'Connector not found.');
+  if (enabled && key === 'google_sheets' && !hasGoogleSheetsTenantBinding(tenantId)) {
+    const now = nowIso();
+    db.run(`UPDATE connectors SET enabled=0, configured=0, status='needs_configuration', next_run_at=NULL, updated_at=?
+      WHERE tenant_id=? AND connector_key=?`, [now, tenantId, key]);
+    throw new AppError(409, 'connector_not_configured', 'Bind at least one Google Sheet to this workspace before enabling this connector.');
+  }
   if (enabled && !connector.configured) throw new AppError(409, 'connector_not_configured', 'Add the required environment configuration before enabling this connector.');
   if (enabled && !implementedConnectorKeys.has(key)) throw new AppError(409, 'adapter_pending', 'Implement the provider adapter before enabling this connector.');
   if (settings.schedule_input !== undefined && !isPlainObject(settings.schedule_input)) throw new AppError(400, 'invalid_schedule_input', 'schedule_input must be a JSON object.');
@@ -124,6 +141,11 @@ function hasCursor(value) {
   if (Array.isArray(value)) return value.length > 0;
   if (isPlainObject(value)) return Object.keys(value).length > 0;
   return String(value).length > 0;
+}
+
+function withoutInternalFields(input, { includeCursor = false } = {}) {
+  return Object.fromEntries(Object.entries(input).filter(([key]) =>
+    key !== 'reset_cursor' && (includeCursor || key !== 'cursor') && !trustedTenantFields.has(key) && !key.startsWith('__')));
 }
 
 function nextRun(iso, cadence) {

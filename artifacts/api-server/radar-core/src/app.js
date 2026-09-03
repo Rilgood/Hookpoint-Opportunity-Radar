@@ -1,6 +1,6 @@
 import { config, runtimeIssues } from './config.js';
 import { AppError, id, isPlainObject, json, nowIso } from './lib.js';
-import { bootstrap } from './services/bootstrap.js';
+import { bootstrap, syncConnectorCatalog } from './services/bootstrap.js';
 import { createCompany, deleteCompany, updateCompany } from './services/entities.js';
 import { ingestBatch } from './services/ingestion.js';
 import { companyDetail, connectorRuns, dashboardSummary, dataQuality, exportCompaniesCsv, ingestionRejections, listCompanies, listConnectors, listSignals, reviewQueue } from './services/queries.js';
@@ -91,7 +91,10 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
   });
   router.get('/api/v1/signals', async ({ auth, query }) => listSignals(db, auth.tenantId, query));
   router.get('/api/v1/signal-catalog', async () => signalCatalog);
-  router.get('/api/v1/connectors', async ({ auth }) => listConnectors(db, auth.tenantId).map((item) => ({ ...item, implemented: implementedConnectorKeys.has(item.connector_key) })));
+  router.get('/api/v1/connectors', async ({ auth }) => {
+    syncConnectorCatalog(db, auth.tenantId);
+    return listConnectors(db, auth.tenantId).map((item) => ({ ...item, implemented: implementedConnectorKeys.has(item.connector_key) }));
+  });
   router.get('/api/v1/connectors/runs', async ({ auth, query }) => {
     requireScope(auth, 'admin');
     return connectorRuns(db, auth.tenantId, query);

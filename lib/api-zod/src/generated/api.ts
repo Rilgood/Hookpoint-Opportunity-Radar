@@ -361,7 +361,8 @@ export const UpdateRadarConnectorParams = zod.object({
 })
 
 export const UpdateRadarConnectorBody = zod.object({
-  "enabled": zod.boolean()
+  "enabled": zod.boolean(),
+  "schedule_input": zod.record(zod.string(), zod.unknown()).optional().describe('Non-secret connector input saved for recurring runs. Credentials, API keys, access tokens, passwords, and other secrets are forbidden. reset_cursor is reserved for one-time runs and must not appear in schedule_input.')
 })
 
 export const UpdateRadarConnectorResponse = zod.object({
@@ -380,6 +381,119 @@ export const UpdateRadarConnectorResponse = zod.object({
   "last_run_at": zod.coerce.date().nullish(),
   "last_error": zod.string().nullish(),
   "config": zod.record(zod.string(), zod.unknown()).optional()
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * Runs a connector as an administrator and ingests the observations it returns.
+ * @summary Run a configured pull connector
+ */
+export const RunRadarConnectorParams = zod.object({
+  "key": zod.coerce.string()
+})
+
+export const runRadarConnectorBodyCompanyNameMax = 300;
+
+export const runRadarConnectorBodyCompanyDomainMax = 253;
+
+export const runRadarConnectorBodySpreadsheetUrlMax = 2048;
+
+export const runRadarConnectorBodySpreadsheetIdMax = 256;
+
+export const runRadarConnectorBodyRangeMax = 300;
+
+export const runRadarConnectorBodyQueryMax = 1000;
+
+export const runRadarConnectorBodyFormsItemMax = 100;
+
+export const runRadarConnectorBodyFormsMax = 100;
+
+export const runRadarConnectorBodyOrganizationNameMax = 200;
+
+export const runRadarConnectorBodyCikMax = 20;
+
+export const runRadarConnectorBodyNpiMax = 20;
+
+export const runRadarConnectorBodyStateMax = 100;
+
+export const runRadarConnectorBodySkipMin = 0;
+export const runRadarConnectorBodySkipMax = 1000;
+
+export const runRadarConnectorBodyPageMax = 1000;
+
+export const runRadarConnectorBodyAwardTypeCodesItemMax = 20;
+
+export const runRadarConnectorBodyAwardTypeCodesMax = 100;
+
+export const runRadarConnectorBodyStartDateMax = 10;
+
+export const runRadarConnectorBodyEndDateMax = 10;
+
+export const runRadarConnectorBodyFromMax = 10;
+
+export const runRadarConnectorBodyToMax = 10;
+
+export const runRadarConnectorBodyLimitMax = 100;
+
+
+
+export const RunRadarConnectorBody = zod.object({
+  "company": zod.object({
+  "name": zod.string().max(runRadarConnectorBodyCompanyNameMax).optional(),
+  "domain": zod.string().max(runRadarConnectorBodyCompanyDomainMax).optional()
+}).optional().describe('Optional public identity hints for the company targeted by the connector.'),
+  "spreadsheet_url": zod.string().max(runRadarConnectorBodySpreadsheetUrlMax).optional(),
+  "spreadsheet_id": zod.string().max(runRadarConnectorBodySpreadsheetIdMax).optional(),
+  "range": zod.string().max(runRadarConnectorBodyRangeMax).optional(),
+  "query": zod.string().max(runRadarConnectorBodyQueryMax).optional(),
+  "forms": zod.array(zod.string().max(runRadarConnectorBodyFormsItemMax)).max(runRadarConnectorBodyFormsMax).optional(),
+  "organization_name": zod.string().max(runRadarConnectorBodyOrganizationNameMax).optional(),
+  "cik": zod.string().max(runRadarConnectorBodyCikMax).optional(),
+  "npi": zod.string().max(runRadarConnectorBodyNpiMax).optional(),
+  "state": zod.string().max(runRadarConnectorBodyStateMax).optional(),
+  "skip": zod.number().min(runRadarConnectorBodySkipMin).max(runRadarConnectorBodySkipMax).optional(),
+  "page": zod.number().min(1).max(runRadarConnectorBodyPageMax).optional(),
+  "award_type_codes": zod.array(zod.string().max(runRadarConnectorBodyAwardTypeCodesItemMax)).max(runRadarConnectorBodyAwardTypeCodesMax).optional(),
+  "start_date": zod.string().max(runRadarConnectorBodyStartDateMax).optional(),
+  "end_date": zod.string().max(runRadarConnectorBodyEndDateMax).optional(),
+  "from": zod.string().max(runRadarConnectorBodyFromMax).optional(),
+  "to": zod.string().max(runRadarConnectorBodyToMax).optional(),
+  "cursor": zod.record(zod.string(), zod.unknown()).optional(),
+  "limit": zod.number().min(1).max(runRadarConnectorBodyLimitMax).optional(),
+  "reset_cursor": zod.boolean().optional().describe('Ignore the saved provider cursor for this one-time run. This field must not be stored in schedule_input.')
+}).describe('Connector-specific, non-secret input. Credentials, API keys, access tokens, passwords, and other secrets are forbidden; configure credentials through the server\'s secret store. The payload may not exceed the runtime\'s 1 MB limit. Use reset_cursor to ignore a saved provider cursor for this one run.')
+
+export const runRadarConnectorResponseDataErrorsItemIndexMin = 0;
+
+export const runRadarConnectorResponseDataErrorsMax = 100;
+
+
+
+export const RunRadarConnectorResponse = zod.object({
+  "data": zod.object({
+  "run_id": zod.string(),
+  "connector": zod.string(),
+  "status": zod.enum(['succeeded', 'partial']),
+  "cursor": zod.record(zod.string(), zod.unknown()).nullable(),
+  "resumed": zod.boolean(),
+  "seen": zod.number(),
+  "inserted": zod.number(),
+  "duplicates": zod.number(),
+  "rejected": zod.number(),
+  "signals": zod.number(),
+  "signals_created": zod.number(),
+  "people": zod.number(),
+  "companies": zod.array(zod.string()),
+  "errors": zod.array(zod.object({
+  "index": zod.number().min(runRadarConnectorResponseDataErrorsItemIndexMin),
+  "code": zod.string(),
+  "message": zod.string()
+})).max(runRadarConnectorResponseDataErrorsMax)
 }),
   "meta": zod.object({
   "request_id": zod.string(),

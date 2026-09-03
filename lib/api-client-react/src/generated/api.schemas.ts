@@ -329,13 +329,153 @@ export interface ConnectorsResponse {
   meta: ResponseMeta;
 }
 
+/**
+ * Non-secret connector input saved for recurring runs. Credentials, API keys, access tokens, passwords, and other secrets are forbidden. reset_cursor is reserved for one-time runs and must not appear in schedule_input.
+ */
+export type ConnectorUpdateScheduleInput = { [key: string]: unknown };
+
 export interface ConnectorUpdate {
   enabled: boolean;
+  /** Non-secret connector input saved for recurring runs. Credentials, API keys, access tokens, passwords, and other secrets are forbidden. reset_cursor is reserved for one-time runs and must not appear in schedule_input. */
+  schedule_input?: ConnectorUpdateScheduleInput;
 }
 
 export interface ConnectorResponse {
   data: Connector;
   meta: ResponseMeta;
+}
+
+/**
+ * Optional public identity hints for the company targeted by the connector.
+ */
+export interface ConnectorRunCompanyInput {
+  /** @maxLength 300 */
+  name?: string;
+  /** @maxLength 253 */
+  domain?: string;
+  [key: string]: unknown;
+ }
+
+export type ConnectorRunInputCursor = { [key: string]: unknown };
+
+/**
+ * Connector-specific, non-secret input. Credentials, API keys, access tokens, passwords, and other secrets are forbidden; configure credentials through the server's secret store. The payload may not exceed the runtime's 1 MB limit. Use reset_cursor to ignore a saved provider cursor for this one run.
+ */
+export interface ConnectorRunInput {
+  company?: ConnectorRunCompanyInput;
+  /** @maxLength 2048 */
+  spreadsheet_url?: string;
+  /** @maxLength 256 */
+  spreadsheet_id?: string;
+  /** @maxLength 300 */
+  range?: string;
+  /** @maxLength 1000 */
+  query?: string;
+  /**
+     * @maxItems 100
+     * @items.maxLength 100
+     */
+  forms?: string[];
+  /** @maxLength 200 */
+  organization_name?: string;
+  /** @maxLength 20 */
+  cik?: string;
+  /** @maxLength 20 */
+  npi?: string;
+  /** @maxLength 100 */
+  state?: string;
+  /**
+     * @minimum 0
+     * @maximum 1000
+     */
+  skip?: number;
+  /**
+     * @minimum 1
+     * @maximum 1000
+     */
+  page?: number;
+  /**
+     * @maxItems 100
+     * @items.maxLength 20
+     */
+  award_type_codes?: string[];
+  /** @maxLength 10 */
+  start_date?: string;
+  /** @maxLength 10 */
+  end_date?: string;
+  /** @maxLength 10 */
+  from?: string;
+  /** @maxLength 10 */
+  to?: string;
+  cursor?: ConnectorRunInputCursor;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  limit?: number;
+  /** Ignore the saved provider cursor for this one-time run. This field must not be stored in schedule_input. */
+  reset_cursor?: boolean;
+  [key: string]: unknown;
+ }
+
+export interface ConnectorRunError {
+  /** @minimum 0 */
+  index: number;
+  code: string;
+  message: string;
+}
+
+export type ConnectorRunResultStatus = typeof ConnectorRunResultStatus[keyof typeof ConnectorRunResultStatus];
+
+
+export const ConnectorRunResultStatus = {
+  succeeded: 'succeeded',
+  partial: 'partial',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ConnectorRunResultCursor = { [key: string]: unknown } | null;
+
+export interface ConnectorRunResult {
+  run_id: string;
+  connector: string;
+  status: ConnectorRunResultStatus;
+  /** @nullable */
+  cursor: ConnectorRunResultCursor;
+  resumed: boolean;
+  seen: number;
+  inserted: number;
+  duplicates: number;
+  rejected: number;
+  signals: number;
+  signals_created: number;
+  people: number;
+  companies: string[];
+  /** @maxItems 100 */
+  errors: ConnectorRunError[];
+}
+
+export interface ConnectorRunResponse {
+  data: ConnectorRunResult;
+  meta: ResponseMeta;
+}
+
+export interface ApiError {
+  code: string;
+  message: string;
+  /** Optional structured context for the error. */
+  details?: unknown;
+}
+
+export interface ErrorResponseMeta {
+  request_id: string;
+}
+
+export interface ErrorResponse {
+  error: ApiError;
+  meta: ErrorResponseMeta;
 }
 
 export type DataQualityObservations = {

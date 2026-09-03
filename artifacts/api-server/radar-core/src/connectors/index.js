@@ -3,17 +3,24 @@ import { AppError } from '../lib.js';
 import { BaseConnector } from './base.js';
 import { ApifyConnector } from './apify.js';
 import { GdeltConnector, NewsApiConnector } from './news.js';
+import { NppesConnector, SecEdgarConnector, UsaSpendingConnector } from './public-data.js';
+import { GoogleSheetsConnector } from './google-sheets.js';
 
 export function connectorFor(key) {
   const manifest = connectorByKey.get(key);
   if (!manifest) throw new AppError(404, 'connector_not_found', `Unknown connector: ${key}`);
   if (key === 'newsapi') return new NewsApiConnector(manifest);
   if (key === 'gdelt') return new GdeltConnector(manifest);
+  if (key === 'sec_edgar') return new SecEdgarConnector(manifest);
+  if (key === 'nppes') return new NppesConnector(manifest);
+  if (key === 'usa_spending') return new UsaSpendingConnector(manifest);
+  if (key === 'google_sheets') return new GoogleSheetsConnector(manifest);
   if (key.startsWith('apify_')) return new ApifyConnector(manifest);
   return new BaseConnector(manifest);
 }
 
 export const implementedConnectorKeys = new Set([
   'generic_webhook','gdelt','newsapi','apify_google_maps','apify_website','apify_google_search',
-  'apify_facebook_ads','apify_instagram','apify_tiktok','apify_linkedin_company','apify_linkedin_jobs','apify_google_reviews'
+  'apify_facebook_ads','apify_instagram','apify_tiktok','apify_linkedin_company','apify_linkedin_jobs','apify_google_reviews',
+  'sec_edgar','nppes','usa_spending','google_sheets'
 ]);
