@@ -48,6 +48,175 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { OutcomeDialog } from "@/components/outcome-dialog";
 
+type RecommendationPanelsProps = {
+  recommendation: {
+    offer: string;
+    outreach_angle: string;
+    proof_points?: Array<{
+      label: string;
+      contribution?: number;
+      summary: string;
+      source_count?: number;
+      last_seen_at?: string;
+    }>;
+  } | null;
+  mergedRecommendationContexts: Array<{
+    source_company_id: string;
+    source_name: string;
+    merged_at: string;
+    offer: string;
+    headline?: string | null;
+    rationale: string;
+    outreach_angle: string;
+    next_action: string;
+    proof_points: Array<{
+      label: string;
+      summary: string;
+    }>;
+  }>;
+};
+
+export function RecommendationPanels({
+  recommendation,
+  mergedRecommendationContexts,
+}: RecommendationPanelsProps) {
+  return (
+    <>
+      {recommendation && (
+        <Card className="border-blue-200 dark:border-blue-900 shadow-sm">
+          <CardHeader className="pb-3 bg-blue-50/50 dark:bg-blue-950/20 border-b border-blue-100 dark:border-blue-900/50">
+            <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100">
+              Recommended Playbook
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-5 space-y-5 text-sm">
+            <div>
+              <span className="font-bold text-foreground block mb-1.5 uppercase text-xs tracking-wider text-blue-600 dark:text-blue-400">
+                Target Offer
+              </span>
+              <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                {recommendation.offer}
+              </p>
+            </div>
+            <div>
+              <span className="font-bold text-foreground block mb-1.5 uppercase text-xs tracking-wider text-blue-600 dark:text-blue-400">
+                Outreach Angle
+              </span>
+              <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+                {recommendation.outreach_angle}
+              </p>
+            </div>
+            {recommendation.proof_points &&
+              recommendation.proof_points.length > 0 && (
+                <div>
+                  <span className="font-bold text-foreground block mb-2.5 uppercase text-xs tracking-wider text-blue-600 dark:text-blue-400">
+                    Supporting Evidence
+                  </span>
+                  <ul className="space-y-3 text-muted-foreground">
+                    {recommendation.proof_points.map((pt, i) => (
+                      <li
+                        key={`${pt.label}-${i}`}
+                        className="rounded-lg border bg-white dark:bg-slate-900 shadow-sm p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <span className="font-semibold text-foreground text-sm">
+                            {pt.label}
+                          </span>
+                          <span className="shrink-0 font-mono text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
+                            +{pt.contribution}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                          {pt.summary}
+                        </p>
+                        <p className="mt-2.5 text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
+                          {pt.source_count}{" "}
+                          {pt.source_count === 1 ? "source" : "sources"} &bull;{" "}
+                          seen {formatDate(pt.last_seen_at)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+          </CardContent>
+        </Card>
+      )}
+
+      {mergedRecommendationContexts.length > 0 && (
+        <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+          <CardHeader className="pb-3 border-b bg-slate-50/70 dark:bg-slate-900/40">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <History className="h-5 w-5 text-slate-500" />
+              Retained merged-account context
+            </CardTitle>
+            <CardDescription>
+              Historical research retained for reference. It is not an active recommendation or an outreach instruction.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-4">
+            {mergedRecommendationContexts.map((context, index) => (
+              <section
+                key={`${context.source_company_id}-${context.merged_at}-${index}`}
+                className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/30"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Merged source account
+                    </p>
+                    <p className="mt-1 font-semibold text-foreground">{context.source_name}</p>
+                  </div>
+                  <Badge variant="outline" className="font-normal text-muted-foreground">
+                    Merged {formatDate(context.merged_at)}
+                  </Badge>
+                </div>
+                <div className="space-y-4 pt-4 text-sm">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Former offer</p>
+                    <p className="mt-1 font-medium text-foreground">{context.offer}</p>
+                  </div>
+                  {context.headline && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Original headline</p>
+                      <p className="mt-1 text-muted-foreground">{context.headline}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Retained rationale</p>
+                    <p className="mt-1 leading-relaxed text-muted-foreground">{context.rationale}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Original outreach angle</p>
+                    <p className="mt-1 leading-relaxed text-muted-foreground">{context.outreach_angle}</p>
+                  </div>
+                  {context.proof_points.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Retained proof points</p>
+                      <ul className="mt-2 space-y-2">
+                        {context.proof_points.map((point, pointIndex) => (
+                          <li key={`${point.label}-${pointIndex}`} className="rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-900">
+                            <p className="font-medium text-foreground">{point.label}</p>
+                            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{point.summary}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="rounded-md border border-dashed border-slate-200 px-3 py-2 dark:border-slate-700">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Former next step · reference only</p>
+                    <p className="mt-1 text-muted-foreground">{context.next_action}</p>
+                  </div>
+                </div>
+              </section>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+}
+
 export default function OpportunityDetail() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
@@ -397,137 +566,10 @@ export default function OpportunityDetail() {
             </CardContent>
           </Card>
 
-          {recommendation && (
-            <Card className="border-blue-200 dark:border-blue-900 shadow-sm">
-              <CardHeader className="pb-3 bg-blue-50/50 dark:bg-blue-950/20 border-b border-blue-100 dark:border-blue-900/50">
-                <CardTitle className="text-lg font-bold text-blue-900 dark:text-blue-100">
-                  Recommended Playbook
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-5 space-y-5 text-sm">
-                <div>
-                  <span className="font-bold text-foreground block mb-1.5 uppercase text-xs tracking-wider text-blue-600 dark:text-blue-400">
-                    Target Offer
-                  </span>
-                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-                    {recommendation.offer}
-                  </p>
-                </div>
-                <div>
-                  <span className="font-bold text-foreground block mb-1.5 uppercase text-xs tracking-wider text-blue-600 dark:text-blue-400">
-                    Outreach Angle
-                  </span>
-                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
-                    {recommendation.outreach_angle}
-                  </p>
-                </div>
-                {recommendation.proof_points &&
-                  recommendation.proof_points.length > 0 && (
-                    <div>
-                      <span className="font-bold text-foreground block mb-2.5 uppercase text-xs tracking-wider text-blue-600 dark:text-blue-400">
-                        Supporting Evidence
-                      </span>
-                      <ul className="space-y-3 text-muted-foreground">
-                        {recommendation.proof_points.map((pt, i) => (
-                          <li
-                            key={`${pt.label}-${i}`}
-                            className="rounded-lg border bg-white dark:bg-slate-900 shadow-sm p-3"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <span className="font-semibold text-foreground text-sm">
-                                {pt.label}
-                              </span>
-                              <span className="shrink-0 font-mono text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">
-                                +{pt.contribution}
-                              </span>
-                            </div>
-                            <p className="mt-1.5 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                              {pt.summary}
-                            </p>
-                            <p className="mt-2.5 text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                              {pt.source_count}{" "}
-                              {pt.source_count === 1 ? "source" : "sources"} &bull;{" "}
-                              seen {formatDate(pt.last_seen_at)}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-              </CardContent>
-            </Card>
-          )}
-
-          {mergedRecommendationContexts.length > 0 && (
-            <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
-              <CardHeader className="pb-3 border-b bg-slate-50/70 dark:bg-slate-900/40">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <History className="h-5 w-5 text-slate-500" />
-                  Retained merged-account context
-                </CardTitle>
-                <CardDescription>
-                  Historical research retained for reference. It is not an active recommendation or an outreach instruction.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-4">
-                {mergedRecommendationContexts.map((context, index) => (
-                  <section
-                    key={`${context.source_company_id}-${context.merged_at}-${index}`}
-                    className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/30"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Merged source account
-                        </p>
-                        <p className="mt-1 font-semibold text-foreground">{context.source_name}</p>
-                      </div>
-                      <Badge variant="outline" className="font-normal text-muted-foreground">
-                        Merged {formatDate(context.merged_at)}
-                      </Badge>
-                    </div>
-                    <div className="space-y-4 pt-4 text-sm">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Former offer</p>
-                        <p className="mt-1 font-medium text-foreground">{context.offer}</p>
-                      </div>
-                      {context.headline && (
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Original headline</p>
-                          <p className="mt-1 text-muted-foreground">{context.headline}</p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Retained rationale</p>
-                        <p className="mt-1 leading-relaxed text-muted-foreground">{context.rationale}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Original outreach angle</p>
-                        <p className="mt-1 leading-relaxed text-muted-foreground">{context.outreach_angle}</p>
-                      </div>
-                      {context.proof_points.length > 0 && (
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Retained proof points</p>
-                          <ul className="mt-2 space-y-2">
-                            {context.proof_points.map((point, pointIndex) => (
-                              <li key={`${point.label}-${pointIndex}`} className="rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-900">
-                                <p className="font-medium text-foreground">{point.label}</p>
-                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{point.summary}</p>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      <div className="rounded-md border border-dashed border-slate-200 px-3 py-2 dark:border-slate-700">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Former next step · reference only</p>
-                        <p className="mt-1 text-muted-foreground">{context.next_action}</p>
-                      </div>
-                    </div>
-                  </section>
-                ))}
-              </CardContent>
-            </Card>
-          )}
+          <RecommendationPanels
+            recommendation={recommendation ?? null}
+            mergedRecommendationContexts={mergedRecommendationContexts}
+          />
 
           {outcomes && outcomes.length > 0 && (
             <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
