@@ -13,7 +13,34 @@ import { Info, Target, TrendingUp, ShieldAlert, BarChart3, CheckCircle2, FlaskCo
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { describeApprovalRejection } from "./approval-errors";
+import {
+  describeApprovalRejection,
+  describeBlockedEvaluation,
+  describeEvaluationFailure,
+  type EvaluationFailure,
+} from "./calibration-errors";
+
+function EvaluationFailureAlert({ failure }: { failure: EvaluationFailure }) {
+  const blocked = failure.kind === "blocked";
+  return (
+    <Alert
+      variant={blocked ? "default" : "destructive"}
+      role="alert"
+      data-testid="evaluation-failure"
+      data-failure-kind={failure.kind}
+      data-failure-code={failure.code}
+      data-retryable={failure.retryable ? "true" : "false"}
+      className={cn(blocked && "border-amber-200 bg-amber-50 dark:bg-amber-950/30")}
+    >
+      <ShieldAlert className={cn("h-4 w-4", blocked && "text-amber-600")} />
+      <AlertTitle>{failure.title}</AlertTitle>
+      <AlertDescription className="space-y-1">
+        <p>{failure.message}</p>
+        <p className="font-semibold">Next step: {failure.action}</p>
+      </AlertDescription>
+    </Alert>
+  );
+}
 
 export function CalibrationAnalytics() {
   const { data: analyticsRes, isLoading, isError } = useGetRadarOutcomeAnalytics();
@@ -53,6 +80,13 @@ export function CalibrationAnalytics() {
   }
 
   const { summary, score_bands: calScoreBands } = calibration;
+  // A failed request (403/429/5xx) and a guardrail-blocked 200 both mean "no
+  // recommendation"; explain each with its cause and next step.
+  const evaluationFailure = evaluate.isError
+    ? describeEvaluationFailure(evaluate.error)
+    : evaluation?.status === "blocked"
+      ? describeBlockedEvaluation(evaluation)
+      : null;
 
   // Let's create an informative surface
   return (
@@ -141,14 +175,7 @@ export function CalibrationAnalytics() {
                    {evaluate.isPending ? "Evaluating…" : "Evaluate holdout"}
                  </Button>
                </div>
-               {evaluate.isError && <p className="text-sm text-destructive">Unable to evaluate this cohort. Please try again.</p>}
-               {evaluation?.status === "blocked" && (
-                 <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30">
-                   <ShieldAlert className="h-4 w-4 text-amber-600" />
-                   <AlertTitle>Recommendation blocked by guardrails</AlertTitle>
-                   <AlertDescription>{evaluation.reason}</AlertDescription>
-                 </Alert>
-               )}
+               {evaluationFailure && <EvaluationFailureAlert failure={evaluationFailure} />}
                {evaluation?.recommendation && (
                  <div className="space-y-3 rounded-lg border bg-background p-3">
                    <div className="flex flex-wrap items-center justify-between gap-2">

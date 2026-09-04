@@ -185,6 +185,32 @@ test('score recommendations require a balanced holdout and only change versions 
   db.close();
 });
 
+test('an insufficient holdout is reported as a blocked evaluation with the counts the dashboard explains', () => {
+  const db = setup();
+  const tenant = config.defaultTenantId;
+  // 40 labels -> a 25% holdout of 10, below the 30-label minimum. The dashboard
+  // derives "not enough held-out labels" from these guardrail counts, so this
+  // pins the response shape it depends on: a 200 with status "blocked", not an
+  // error envelope.
+  for (let index = 0; index < 40; index += 1) {
+    const companyId = `short-holdout-${index}`;
+    addCompany(db, tenant, companyId, 10);
+    addOutcome(db, tenant, companyId, 10, index % 2 === 0 ? 'meeting' : 'lost', new Date(Date.UTC(2021, 0, index + 1)).toISOString());
+  }
+  const evaluation = evaluateScoreCalibration(db, tenant, 'operator-a');
+  assert.equal(evaluation.status, 'blocked');
+  assert.equal(evaluation.recommendation, undefined);
+  assert.equal(evaluation.guardrails.holdout_accounts, 10);
+  assert.equal(evaluation.guardrails.qualified_accounts, 5);
+  assert.equal(evaluation.guardrails.negative_accounts, 5);
+  assert.equal(evaluation.guardrails.minimum_sample, 30);
+  assert.equal(evaluation.guardrails.min_each_class, 10);
+  assert.ok(evaluation.guardrails.holdout_accounts < evaluation.guardrails.minimum_sample);
+  assert.match(evaluation.reason, /Holdout needs 30 labels/);
+  assert.equal(activeScoringConfig(db, tenant).version, 'rules-1.1');
+  db.close();
+});
+
 test('score recommendations reject a training-only pattern that fails the independent holdout', () => {
   const db = setup();
   const tenant = config.defaultTenantId;

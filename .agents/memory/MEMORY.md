@@ -3,3 +3,4 @@
 - [Workspace test tooling](workspace-test-tooling.md) — the managed package installer cannot add shared developer tools to a pnpm workspace root.
 - [Outcome cohort label time](outcome-cohort-label-time.md) — cohort/source/timing analytics must only use evidence observed before the earliest label; exclude, never zero.
 - [Browser e2e setup](browser-e2e-setup.md) — Clerk ticket sign-in, system Chromium, outputDir outside the Vite root, and the isolated localhost-proxy release gate (Clerk dev accepts localhost origins).
+- [Calibration evaluation contract](calibration-evaluation-contract.md) — evaluate guardrail outcomes are 200 "blocked" bodies with counts, not error codes; no holdout_unavailable exists server-side.

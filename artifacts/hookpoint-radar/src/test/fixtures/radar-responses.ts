@@ -143,6 +143,33 @@ export const calibrationEvaluationResponse = {
   meta,
 };
 
+/**
+ * Verbatim output of radar-core's evaluateScoreCalibration for 40 labels (a
+ * 25% holdout of 10, under the 30-label minimum). The server reports guardrail
+ * outcomes as a 200 with status "blocked", not as an error envelope; the
+ * matching server test lives in radar-core/test/signal-engine.test.js.
+ */
+export const blockedHoldoutEvaluationResponse = {
+  data: {
+    status: "blocked",
+    guardrails: {
+      cohort: "Most recent 25% of first qualifying or negative labels, held out from the proposal calculation.",
+      holdout_accounts: 10,
+      qualified_accounts: 5,
+      negative_accounts: 5,
+      minimum_sample: 30,
+      min_each_class: 10,
+      training_accounts: 30,
+      training_qualified_accounts: 15,
+      training_negative_accounts: 15,
+      minimum_training_sample: 30,
+      min_training_each_class: 10,
+    },
+    reason: "Holdout needs 30 labels with 10 qualified and 10 negative outcomes; training needs 30 labels with 10 in each class.",
+  },
+  meta,
+};
+
 export const approvedCalibrationResponse = {
   data: {
     id: "score-version-2",
