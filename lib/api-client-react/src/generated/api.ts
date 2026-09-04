@@ -36,6 +36,7 @@ import type {
   ListRadarReviewQueueParams,
   ListRadarSignalsParams,
   ObservationBatchInput,
+  OutcomeAnalyticsResponse,
   OutcomeInput,
   OutcomeResponse,
   ReviewQueueResponse,
@@ -455,6 +456,83 @@ export const useRecordRadarOutcome = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRecordRadarOutcomeMutationOptions(options));
     }
+
+export const getGetRadarOutcomeAnalyticsUrl = () => {
+
+
+
+
+  return `/api/v1/analytics/outcomes`
+}
+
+/**
+ * @summary Get outcome analytics and observational score calibration
+ */
+export const getRadarOutcomeAnalytics = async ( options?: Parameters<typeof customFetch>[1]): Promise<OutcomeAnalyticsResponse> => {
+
+  return customFetch<OutcomeAnalyticsResponse>(getGetRadarOutcomeAnalyticsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRadarOutcomeAnalyticsQueryKey = () => {
+    return [
+    `/api/v1/analytics/outcomes`
+    ] as const;
+    }
+
+
+export const getGetRadarOutcomeAnalyticsQueryOptions = <TData = Awaited<ReturnType<typeof getRadarOutcomeAnalytics>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarOutcomeAnalytics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRadarOutcomeAnalyticsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRadarOutcomeAnalytics>>> = ({ signal }) => getRadarOutcomeAnalytics({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRadarOutcomeAnalytics>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRadarOutcomeAnalyticsQueryResult = NonNullable<Awaited<ReturnType<typeof getRadarOutcomeAnalytics>>>
+export type GetRadarOutcomeAnalyticsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get outcome analytics and observational score calibration
+ */
+
+export function useGetRadarOutcomeAnalytics<TData = Awaited<ReturnType<typeof getRadarOutcomeAnalytics>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarOutcomeAnalytics>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRadarOutcomeAnalyticsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getIngestRadarObservationsUrl = () => {
 

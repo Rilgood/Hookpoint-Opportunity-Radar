@@ -117,6 +117,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OutcomeResponse"
+  /v1/analytics/outcomes:
+    get:
+      operationId: getRadarOutcomeAnalytics
+      tags: [radar]
+      summary: Get outcome analytics and observational score calibration
+      responses:
+        "200":
+          description: Outcome analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutcomeAnalyticsResponse"
   /v1/ingest:
     post:
       operationId: ingestRadarObservations
@@ -485,7 +497,7 @@ components:
           $ref: "#/components/schemas/ResponseMeta"
     Signal:
       type: object
-      required: [id, company_id, company_name, signal_key, label, category, contribution, summary, source_count, status, first_seen_at, last_seen_at, opportunity_score, opportunity_tier]
+      required: [id, company_id, company_name, signal_key, label, category, base_weight, strength, contribution, summary, source_count, status, first_seen_at, last_seen_at, opportunity_score, opportunity_tier]
       properties:
         id:
           type: string
@@ -501,6 +513,10 @@ components:
           type: string
         category:
           type: string
+        base_weight:
+          type: number
+        strength:
+          type: number
         dimension:
           type: string
         confidence:
@@ -656,6 +672,132 @@ components:
         data:
           type: object
           additionalProperties: true
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    OutcomeAnalyticsScoreBand:
+      type: object
+      required: [score_band, labeled, positive, positive_rate]
+      properties:
+        score_band:
+          type: string
+        labeled:
+          type: number
+        positive:
+          type: number
+        positive_rate:
+          type: number
+    OutcomeAnalyticsSignalPerformance:
+      type: object
+      required: [signal_key, labeled, positive, positive_rate]
+      properties:
+        signal_key:
+          type: string
+        label:
+          type: [string, "null"]
+        labeled:
+          type: number
+        positive:
+          type: number
+        positive_rate:
+          type: number
+    OutcomeAnalyticsTotal:
+      type: object
+      required: [outcome_type, count, amount]
+      properties:
+        outcome_type:
+          type: string
+        count:
+          type: number
+        amount:
+          type: number
+    CalibrationScoreBand:
+      type: object
+      required: [score_band, labeled, qualified, negative, raw_qualified_rate, smoothed_qualified_rate, wilson_95_lower, wilson_95_upper, qualified_rate_lift_vs_cold]
+      properties:
+        score_band:
+          type: string
+          enum: [hot, warm, watch, cold]
+        labeled:
+          type: number
+          minimum: 0
+        qualified:
+          type: number
+          minimum: 0
+        negative:
+          type: number
+          minimum: 0
+        raw_qualified_rate:
+          type: number
+        smoothed_qualified_rate:
+          type: number
+        wilson_95_lower:
+          type: number
+        wilson_95_upper:
+          type: number
+        qualified_rate_lift_vs_cold:
+          type: [number, "null"]
+    CalibrationSummary:
+      type: object
+      required: [labeled_accounts, qualified_accounts, negative_accounts, minimum_sample, min_each_class, sufficient_sample, cohort_note, recommendation]
+      properties:
+        labeled_accounts:
+          type: number
+          minimum: 0
+        qualified_accounts:
+          type: number
+          minimum: 0
+        negative_accounts:
+          type: number
+          minimum: 0
+        minimum_sample:
+          type: number
+          const: 30
+        min_each_class:
+          type: number
+          const: 10
+        sufficient_sample:
+          type: boolean
+        cohort_note:
+          type: string
+        recommendation:
+          type: string
+          readOnly: true
+    OutcomeCalibration:
+      type: object
+      required: [summary, score_bands]
+      properties:
+        summary:
+          $ref: "#/components/schemas/CalibrationSummary"
+        score_bands:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/CalibrationScoreBand"
+    OutcomeAnalyticsData:
+      type: object
+      required: [totals, score_bands, signal_performance, calibration]
+      properties:
+        totals:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutcomeAnalyticsTotal"
+        score_bands:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutcomeAnalyticsScoreBand"
+        signal_performance:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutcomeAnalyticsSignalPerformance"
+        calibration:
+          $ref: "#/components/schemas/OutcomeCalibration"
+    OutcomeAnalyticsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/OutcomeAnalyticsData"
         meta:
           $ref: "#/components/schemas/ResponseMeta"
     ObservationCompanyInput:

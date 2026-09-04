@@ -7,6 +7,9 @@
  */
 
 export * from './apiError';
+export * from './calibrationScoreBand';
+export * from './calibrationScoreBandScoreBand';
+export * from './calibrationSummary';
 export * from './company';
 export * from './companyDetail';
 export * from './companyDetailEventsItem';
@@ -57,6 +60,12 @@ export * from './observationCompanyInput';
 export * from './observationInput';
 export * from './observationInputAttributes';
 export * from './opportunityTier';
+export * from './outcomeAnalyticsData';
+export * from './outcomeAnalyticsResponse';
+export * from './outcomeAnalyticsScoreBand';
+export * from './outcomeAnalyticsSignalPerformance';
+export * from './outcomeAnalyticsTotal';
+export * from './outcomeCalibration';
 export * from './outcomeInput';
 export * from './outcomeInputOutcomeType';
 export * from './outcomeResponse';

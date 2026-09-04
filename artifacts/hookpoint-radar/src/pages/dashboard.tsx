@@ -29,6 +29,7 @@ import {
   TopIndustries,
   DataReadiness,
   ReviewAlert,
+  CalibrationAnalytics,
 } from "@/components/dashboard";
 import { useMemo, useState } from "react";
 
@@ -306,6 +307,8 @@ export default function Dashboard() {
       )}
 
       <KpiGrid summary={summary} quality={quality} />
+
+      <CalibrationAnalytics />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 flex flex-col gap-6">

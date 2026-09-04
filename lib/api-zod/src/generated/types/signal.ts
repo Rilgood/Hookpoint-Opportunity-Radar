@@ -16,6 +16,8 @@ export interface Signal {
   signal_key: string;
   label: string;
   category: string;
+  base_weight: number;
+  strength: number;
   dimension?: string;
   confidence?: number;
   contribution: number;

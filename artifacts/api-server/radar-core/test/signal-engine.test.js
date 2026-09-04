@@ -8,6 +8,15 @@ import { config } from '../src/config.js';
 import { outcomeAnalytics, recordOutcome } from '../src/services/outcomes.js';
 
 function setup() { const db = openDatabase(':memory:'); bootstrap(db); return db; }
+function addCompany(db, tenantId, companyId, score) {
+  const now = new Date().toISOString();
+  db.run(`INSERT INTO companies(id, tenant_id, name, normalized_name, domain, opportunity_score, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [companyId, tenantId, companyId, companyId.toLowerCase(), `${companyId}.example`, score, now, now]);
+}
+function addOutcome(db, tenantId, companyId, score, outcomeType, occurredAt) {
+  db.run('UPDATE companies SET opportunity_score=? WHERE tenant_id=? AND id=?', [score, tenantId, companyId]);
+  return recordOutcome(db, tenantId, companyId, { outcome_type: outcomeType, occurred_at: occurredAt });
+}
 
 test('resolves two sources to one company and corroborates a signal', () => {
   const db = setup();
@@ -69,5 +78,78 @@ test('records closed-loop sales outcomes for score calibration', () => {
   assert.equal(outcome.outcome_type, 'meeting');
   assert.equal(db.get('SELECT status FROM companies WHERE id=?', [result.company.id]).status, 'meeting');
   assert.equal(outcomeAnalytics(db, config.defaultTenantId).totals[0].count, 1);
+  db.close();
+});
+
+test('calibration uses only earliest qualifying or negative label per tenant account', () => {
+  const db = setup();
+  const tenant = config.defaultTenantId;
+  addCompany(db, tenant, 'hot-qualified', 80);
+  addCompany(db, tenant, 'warm-negative', 55);
+  addCompany(db, tenant, 'watch-qualified', 40);
+  addCompany(db, tenant, 'cold-negative', 10);
+  addCompany(db, tenant, 'hot-opportunity', 80);
+  addCompany(db, tenant, 'excluded', 80);
+  addOutcome(db, tenant, 'hot-qualified', 80, 'meeting', '2020-01-01T00:00:00Z');
+  addOutcome(db, tenant, 'hot-qualified', 10, 'lost', '2020-01-02T00:00:00Z');
+  addOutcome(db, tenant, 'warm-negative', 55, 'disqualified', '2020-01-01T00:00:00Z');
+  addOutcome(db, tenant, 'watch-qualified', 40, 'won', '2020-01-01T00:00:00Z');
+  addOutcome(db, tenant, 'cold-negative', 10, 'lost', '2020-01-01T00:00:00Z');
+  addOutcome(db, tenant, 'hot-opportunity', 80, 'opportunity', '2020-01-01T00:00:00Z');
+  for (const outcomeType of ['contacted', 'accepted', 'rejected', 'positive_reply', 'negative_reply', 'suppression_correct', 'suppression_wrong']) {
+    addOutcome(db, tenant, 'excluded', 80, outcomeType, '2020-01-01T00:00:00Z');
+  }
+  db.run(`INSERT INTO tenants(id, name, slug, created_at, updated_at) VALUES ('other', 'Other', 'other', '2020-01-01T00:00:00Z', '2020-01-01T00:00:00Z')`);
+  addCompany(db, 'other', 'other-qualified', 80);
+  addOutcome(db, 'other', 'other-qualified', 80, 'opportunity', '2020-01-01T00:00:00Z');
+
+  const analytics = outcomeAnalytics(db, tenant);
+  assert.deepEqual(analytics.calibration.score_bands.map(({ score_band, labeled, qualified, negative }) => ({ score_band, labeled, qualified, negative })), [
+    { score_band: 'hot', labeled: 2, qualified: 2, negative: 0 },
+    { score_band: 'warm', labeled: 1, qualified: 0, negative: 1 },
+    { score_band: 'watch', labeled: 1, qualified: 1, negative: 0 },
+    { score_band: 'cold', labeled: 1, qualified: 0, negative: 1 }
+  ]);
+  assert.deepEqual(analytics.calibration.summary.labeled_accounts, 5);
+  assert.deepEqual(analytics.calibration.summary.qualified_accounts, 3);
+  assert.deepEqual(analytics.calibration.summary.negative_accounts, 2);
+  assert.equal(analytics.calibration.summary.sufficient_sample, false);
+  assert.ok(analytics.calibration.summary.cohort_note.includes('only accounts'));
+  assert.ok(analytics.calibration.summary.recommendation.includes('do not change score weights'));
+  assert.ok(Array.isArray(analytics.totals));
+  assert.ok(Array.isArray(analytics.score_bands));
+  assert.ok(Array.isArray(analytics.signal_performance));
+  db.close();
+});
+
+test('calibration returns safe zero bands, finite intervals, and threshold metadata', () => {
+  const empty = setup();
+  const emptyCalibration = outcomeAnalytics(empty, config.defaultTenantId).calibration;
+  assert.deepEqual(emptyCalibration.score_bands.map((row) => row.labeled), [0, 0, 0, 0]);
+  for (const row of emptyCalibration.score_bands) {
+    assert.equal(row.raw_qualified_rate, 0);
+    assert.equal(row.qualified_rate_lift_vs_cold, null);
+    assert.ok(Number.isFinite(row.smoothed_qualified_rate));
+    assert.ok(Number.isFinite(row.wilson_95_lower));
+    assert.ok(Number.isFinite(row.wilson_95_upper));
+  }
+  empty.close();
+
+  const db = setup();
+  const tenant = config.defaultTenantId;
+  for (let index = 0; index < 29; index += 1) {
+    const companyId = `insufficient-${index}`;
+    addCompany(db, tenant, companyId, 10);
+    addOutcome(db, tenant, companyId, 10, index < 10 ? 'meeting' : 'lost', `2020-01-${String(index + 1).padStart(2, '0')}T00:00:00Z`);
+  }
+  assert.equal(outcomeAnalytics(db, tenant).calibration.summary.sufficient_sample, false);
+  addCompany(db, tenant, 'sufficient-29', 10);
+  addOutcome(db, tenant, 'sufficient-29', 10, 'lost', '2020-02-01T00:00:00Z');
+  const calibration = outcomeAnalytics(db, tenant).calibration;
+  assert.equal(calibration.summary.sufficient_sample, true);
+  const cold = calibration.score_bands.find((row) => row.score_band === 'cold');
+  assert.equal(cold.raw_qualified_rate, 33.3);
+  assert.equal(cold.qualified_rate_lift_vs_cold, 0);
+  assert.ok(cold.wilson_95_lower >= 0 && cold.wilson_95_upper <= 100);
   db.close();
 });

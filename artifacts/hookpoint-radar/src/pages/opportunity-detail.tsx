@@ -4,9 +4,10 @@ import {
   useGetRadarCompany,
   useRecordRadarOutcome,
   OutcomeInputOutcomeType,
+  OutcomeInput,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetRadarCompanyQueryKey, getGetRadarDashboardQueryKey, getListRadarCompaniesQueryKey } from "@workspace/api-client-react";
+import { getGetRadarCompanyQueryKey, getGetRadarDashboardQueryKey, getListRadarCompaniesQueryKey, getGetRadarOutcomeAnalyticsQueryKey } from "@workspace/api-client-react";
 import {
   Card,
   CardContent,
@@ -31,6 +32,7 @@ import {
   Lightbulb,
   GitMerge,
   History,
+  AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { OutcomeDialog } from "@/components/outcome-dialog";
@@ -70,6 +72,9 @@ export default function OpportunityDetail() {
             }),
             queryClient.invalidateQueries({
               queryKey: getGetRadarDashboardQueryKey(),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: getGetRadarOutcomeAnalyticsQueryKey(),
             })
           ]);
         }
@@ -113,9 +118,22 @@ export default function OpportunityDetail() {
   const { company, signals, observations, recommendation, outcomes } =
     response.data;
 
-  const handleOutcomeSubmit = (type: OutcomeInputOutcomeType, note?: string) => {
+  const handleOutcomeSubmit = (type: OutcomeInputOutcomeType, note?: string, amount?: number, occurred_at?: string, signal_key?: string) => {
     if (!id) return;
-    outcomeMutation.mutate({ id, data: { outcome_type: type, note } });
+
+    const data: OutcomeInput = {
+      outcome_type: type,
+    };
+
+    if (note && note.trim()) {
+      data.note = note.trim();
+    }
+
+    if (amount !== undefined) Object.assign(data, { amount });
+    if (occurred_at && occurred_at.trim()) Object.assign(data, { occurred_at: occurred_at.trim() });
+    if (signal_key && signal_key.trim()) Object.assign(data, { signal_key: signal_key.trim() });
+
+    outcomeMutation.mutate({ id, data });
   };
 
   return (
@@ -126,6 +144,7 @@ export default function OpportunityDetail() {
         onSubmit={handleOutcomeSubmit}
         isPending={outcomeMutation.isPending}
         companyName={company.name}
+        signals={signals}
       />
 
       <div>
@@ -218,6 +237,29 @@ export default function OpportunityDetail() {
                     <Activity className="h-3.5 w-3.5" /> Status
                   </p>
                   <p className="font-medium text-foreground capitalize">{company.status}</p>
+                </div>
+                <div className="col-span-2 pt-3 mt-1 border-t space-y-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider">
+                      Identity Resolution
+                    </p>
+                    <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded ${
+                      company.identity_confidence < 0.8
+                        ? "text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/30"
+                        : "text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/30"
+                    }`}>
+                      {(company.identity_confidence * 100).toFixed(0)}% Conf
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-medium leading-relaxed">
+                    Resolved via <span className="text-foreground font-semibold lowercase">{humanizeLabel(company.identity_method)}</span> matching.
+                    {company.identity_confidence < 0.8 && (
+                      <span className="block mt-1.5 text-amber-700 dark:text-amber-400 font-semibold p-2 bg-amber-50/50 dark:bg-amber-900/20 rounded-md border border-amber-100 dark:border-amber-900/50">
+                        <AlertCircle className="inline-block h-3.5 w-3.5 mr-1 align-text-bottom" />
+                        Confidence is low. Manual verification is required before initiating outreach.
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -381,11 +423,33 @@ export default function OpportunityDetail() {
                       <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 leading-relaxed">
                         {signal.summary}
                       </p>
-                      <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg">
-                        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Contribution: +{signal.contribution}</span>
-                        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Evidence: {signal.source_count}{" "}
-                          {signal.source_count === 1 ? "source" : "sources"}</span>
-                        <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> Seen: {formatDate(signal.first_seen_at)}</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
+                        <div>
+                          <p className="text-muted-foreground uppercase tracking-wider font-semibold mb-1 text-[10px]">Net Contribution</p>
+                          <p className="font-mono font-bold text-blue-600 dark:text-blue-400">+{signal.contribution.toFixed(1)} pts</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground uppercase tracking-wider font-semibold mb-1 text-[10px]">Model Params</p>
+                          <p className="font-medium text-foreground">
+                            Wt: {(signal.base_weight || 0).toFixed(1)} &times; Str: {(signal.strength || 0).toFixed(1)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground uppercase tracking-wider font-semibold mb-1 text-[10px]">Evidence Quality</p>
+                          <p className="font-medium text-foreground flex items-center gap-1">
+                            {(signal.confidence ? signal.confidence * 100 : 0).toFixed(0)}% Conf
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground uppercase tracking-wider font-semibold mb-1 text-[10px]">Volume</p>
+                          <p className="font-medium text-foreground">
+                            {signal.source_count} sources &bull; {signal.evidence_count || 0} hits
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-[11px] font-medium text-slate-400 uppercase tracking-wide">
+                        <span>First seen: {formatDate(signal.first_seen_at)}</span>
+                        <span>Last seen: {formatDate(signal.last_seen_at)}</span>
                       </div>
                     </div>
                   ))}

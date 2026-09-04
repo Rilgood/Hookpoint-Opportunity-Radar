@@ -160,6 +160,8 @@ export const GetRadarCompanyResponse = zod.object({
   "signal_key": zod.string(),
   "label": zod.string(),
   "category": zod.string(),
+  "base_weight": zod.number(),
+  "strength": zod.number(),
   "dimension": zod.string().optional(),
   "confidence": zod.number().optional(),
   "contribution": zod.number(),
@@ -229,6 +231,77 @@ export const RecordRadarOutcomeBody = zod.object({
 
 export const RecordRadarOutcomeResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * @summary Get outcome analytics and observational score calibration
+ */
+export const getRadarOutcomeAnalyticsResponseDataCalibrationSummaryLabeledAccountsMin = 0;
+
+export const getRadarOutcomeAnalyticsResponseDataCalibrationSummaryQualifiedAccountsMin = 0;
+
+export const getRadarOutcomeAnalyticsResponseDataCalibrationSummaryNegativeAccountsMin = 0;
+
+export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsItemLabeledMin = 0;
+
+export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsItemQualifiedMin = 0;
+
+export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsItemNegativeMin = 0;
+
+export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMin = 4;
+export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMax = 4;
+
+
+
+export const GetRadarOutcomeAnalyticsResponse = zod.object({
+  "data": zod.object({
+  "totals": zod.array(zod.object({
+  "outcome_type": zod.string(),
+  "count": zod.number(),
+  "amount": zod.number()
+})),
+  "score_bands": zod.array(zod.object({
+  "score_band": zod.string(),
+  "labeled": zod.number(),
+  "positive": zod.number(),
+  "positive_rate": zod.number()
+})),
+  "signal_performance": zod.array(zod.object({
+  "signal_key": zod.string(),
+  "label": zod.string().nullish(),
+  "labeled": zod.number(),
+  "positive": zod.number(),
+  "positive_rate": zod.number()
+})),
+  "calibration": zod.object({
+  "summary": zod.object({
+  "labeled_accounts": zod.number().min(getRadarOutcomeAnalyticsResponseDataCalibrationSummaryLabeledAccountsMin),
+  "qualified_accounts": zod.number().min(getRadarOutcomeAnalyticsResponseDataCalibrationSummaryQualifiedAccountsMin),
+  "negative_accounts": zod.number().min(getRadarOutcomeAnalyticsResponseDataCalibrationSummaryNegativeAccountsMin),
+  "minimum_sample": zod.literal(30),
+  "min_each_class": zod.literal(10),
+  "sufficient_sample": zod.boolean(),
+  "cohort_note": zod.string(),
+  "recommendation": zod.string()
+}),
+  "score_bands": zod.array(zod.object({
+  "score_band": zod.enum(['hot', 'warm', 'watch', 'cold']),
+  "labeled": zod.number().min(getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsItemLabeledMin),
+  "qualified": zod.number().min(getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsItemQualifiedMin),
+  "negative": zod.number().min(getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsItemNegativeMin),
+  "raw_qualified_rate": zod.number(),
+  "smoothed_qualified_rate": zod.number(),
+  "wilson_95_lower": zod.number(),
+  "wilson_95_upper": zod.number(),
+  "qualified_rate_lift_vs_cold": zod.number().nullable()
+})).min(getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMin).max(getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMax)
+})
+}),
   "meta": zod.object({
   "request_id": zod.string(),
   "duration_ms": zod.number()
@@ -307,6 +380,8 @@ export const ListRadarSignalsResponse = zod.object({
   "signal_key": zod.string(),
   "label": zod.string(),
   "category": zod.string(),
+  "base_weight": zod.number(),
+  "strength": zod.number(),
   "dimension": zod.string().optional(),
   "confidence": zod.number().optional(),
   "contribution": zod.number(),

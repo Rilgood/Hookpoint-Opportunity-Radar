@@ -141,6 +141,8 @@ export interface Signal {
   signal_key: string;
   label: string;
   category: string;
+  base_weight: number;
+  strength: number;
   dimension?: string;
   confidence?: number;
   contribution: number;
@@ -245,6 +247,89 @@ export type OutcomeResponseData = { [key: string]: unknown };
 
 export interface OutcomeResponse {
   data: OutcomeResponseData;
+  meta: ResponseMeta;
+}
+
+export interface OutcomeAnalyticsScoreBand {
+  score_band: string;
+  labeled: number;
+  positive: number;
+  positive_rate: number;
+}
+
+export interface OutcomeAnalyticsSignalPerformance {
+  signal_key: string;
+  /** @nullable */
+  label?: string | null;
+  labeled: number;
+  positive: number;
+  positive_rate: number;
+}
+
+export interface OutcomeAnalyticsTotal {
+  outcome_type: string;
+  count: number;
+  amount: number;
+}
+
+export type CalibrationScoreBandScoreBand = typeof CalibrationScoreBandScoreBand[keyof typeof CalibrationScoreBandScoreBand];
+
+
+export const CalibrationScoreBandScoreBand = {
+  hot: 'hot',
+  warm: 'warm',
+  watch: 'watch',
+  cold: 'cold',
+} as const;
+
+export interface CalibrationScoreBand {
+  score_band: CalibrationScoreBandScoreBand;
+  /** @minimum 0 */
+  labeled: number;
+  /** @minimum 0 */
+  qualified: number;
+  /** @minimum 0 */
+  negative: number;
+  raw_qualified_rate: number;
+  smoothed_qualified_rate: number;
+  wilson_95_lower: number;
+  wilson_95_upper: number;
+  /** @nullable */
+  qualified_rate_lift_vs_cold: number | null;
+}
+
+export interface CalibrationSummary {
+  /** @minimum 0 */
+  labeled_accounts: number;
+  /** @minimum 0 */
+  qualified_accounts: number;
+  /** @minimum 0 */
+  negative_accounts: number;
+  minimum_sample: 30;
+  min_each_class: 10;
+  sufficient_sample: boolean;
+  cohort_note: string;
+  readonly recommendation: string;
+}
+
+export interface OutcomeCalibration {
+  summary: CalibrationSummary;
+  /**
+     * @minItems 4
+     * @maxItems 4
+     */
+  score_bands: CalibrationScoreBand[];
+}
+
+export interface OutcomeAnalyticsData {
+  totals: OutcomeAnalyticsTotal[];
+  score_bands: OutcomeAnalyticsScoreBand[];
+  signal_performance: OutcomeAnalyticsSignalPerformance[];
+  calibration: OutcomeCalibration;
+}
+
+export interface OutcomeAnalyticsResponse {
+  data: OutcomeAnalyticsData;
   meta: ResponseMeta;
 }
 

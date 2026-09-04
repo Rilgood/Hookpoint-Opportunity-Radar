@@ -4,6 +4,36 @@ import { scoringConfig } from './catalog.js';
 
 const types = new Set(['accepted','rejected','contacted','positive_reply','negative_reply','meeting','opportunity','won','lost','disqualified','suppression_correct','suppression_wrong']);
 const statusByOutcome = { accepted: 'accepted', rejected: 'rejected', contacted: 'contacted', positive_reply: 'replied', negative_reply: 'contacted', meeting: 'meeting', opportunity: 'opportunity', won: 'customer', lost: 'lost', disqualified: 'disqualified' };
+const qualifiedOutcomes = new Set(['meeting', 'opportunity', 'won']);
+const calibrationBands = ['hot', 'warm', 'watch', 'cold'];
+const calibrationMinimumSample = 30;
+const calibrationMinEachClass = 10;
+
+function roundPercent(value) {
+  if (!Number.isFinite(value)) return 0;
+  const rounded = Math.round(value * 10) / 10;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function wilsonBounds(qualified, labeled) {
+  if (!labeled) return { lower: 0, upper: 0 };
+  const z = 1.96;
+  const rate = qualified / labeled;
+  const denominator = 1 + (z * z) / labeled;
+  const center = (rate + (z * z) / (2 * labeled)) / denominator;
+  const margin = z * Math.sqrt((rate * (1 - rate) + (z * z) / (4 * labeled)) / labeled) / denominator;
+  return {
+    lower: roundPercent(Math.max(0, center - margin) * 100),
+    upper: roundPercent(Math.min(1, center + margin) * 100)
+  };
+}
+
+function calibrationBand(score) {
+  if (score >= scoringConfig.tierThresholds.hot) return 'hot';
+  if (score >= scoringConfig.tierThresholds.warm) return 'warm';
+  if (score >= scoringConfig.tierThresholds.watch) return 'watch';
+  return 'cold';
+}
 
 export function recordOutcome(db, tenantId, companyId, input, actor = 'operator') {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new AppError(400, 'invalid_outcome', 'Outcome must be a JSON object.');
@@ -50,5 +80,58 @@ export function outcomeAnalytics(db, tenantId) {
       ROUND(100.0 * SUM(CASE WHEN o.outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) / COUNT(*), 1) positive_rate
     FROM outcomes o LEFT JOIN signals s ON s.tenant_id=o.tenant_id AND s.company_id=o.company_id AND s.signal_key=o.signal_key
     WHERE o.tenant_id=? AND o.signal_key IS NOT NULL GROUP BY o.signal_key, s.label ORDER BY positive_rate DESC, labeled DESC`, [tenantId]);
-  return { totals, score_bands: scoreBands, signal_performance: signalPerformance };
+  const labelEvents = db.all(`SELECT company_id, outcome_type, score_at_outcome
+    FROM outcomes
+    WHERE tenant_id=? AND outcome_type IN ('meeting', 'opportunity', 'won', 'lost', 'disqualified')
+    ORDER BY company_id ASC, occurred_at ASC, created_at ASC, id ASC`, [tenantId]);
+  const firstLabelByCompany = new Map();
+  for (const event of labelEvents) {
+    if (!firstLabelByCompany.has(event.company_id)) firstLabelByCompany.set(event.company_id, event);
+  }
+  const countsByBand = Object.fromEntries(calibrationBands.map((band) => [band, { labeled: 0, qualified: 0, negative: 0 }]));
+  for (const event of firstLabelByCompany.values()) {
+    const counts = countsByBand[calibrationBand(event.score_at_outcome)];
+    counts.labeled += 1;
+    if (qualifiedOutcomes.has(event.outcome_type)) counts.qualified += 1;
+    else counts.negative += 1;
+  }
+  const cold = countsByBand.cold;
+  const coldRawRate = cold.labeled ? (cold.qualified / cold.labeled) * 100 : null;
+  const calibrationScoreBands = calibrationBands.map((scoreBand) => {
+    const counts = countsByBand[scoreBand];
+    const rawQualifiedRate = counts.labeled ? roundPercent((counts.qualified / counts.labeled) * 100) : 0;
+    const bounds = wilsonBounds(counts.qualified, counts.labeled);
+    return {
+      score_band: scoreBand,
+      labeled: counts.labeled,
+      qualified: counts.qualified,
+      negative: counts.negative,
+      raw_qualified_rate: rawQualifiedRate,
+      smoothed_qualified_rate: roundPercent(((counts.qualified + 1) / (counts.labeled + 2)) * 100),
+      wilson_95_lower: bounds.lower,
+      wilson_95_upper: bounds.upper,
+      qualified_rate_lift_vs_cold: coldRawRate === null ? null : roundPercent(rawQualifiedRate - coldRawRate)
+    };
+  });
+  const labeledAccounts = firstLabelByCompany.size;
+  const qualifiedAccounts = [...firstLabelByCompany.values()].filter((event) => qualifiedOutcomes.has(event.outcome_type)).length;
+  const negativeAccounts = labeledAccounts - qualifiedAccounts;
+  return {
+    totals,
+    score_bands: scoreBands,
+    signal_performance: signalPerformance,
+    calibration: {
+      summary: {
+        labeled_accounts: labeledAccounts,
+        qualified_accounts: qualifiedAccounts,
+        negative_accounts: negativeAccounts,
+        minimum_sample: calibrationMinimumSample,
+        min_each_class: calibrationMinEachClass,
+        sufficient_sample: labeledAccounts >= calibrationMinimumSample && qualifiedAccounts >= calibrationMinEachClass && negativeAccounts >= calibrationMinEachClass,
+        cohort_note: 'Results cover only accounts with a qualifying or negative outcome label; they are observational and do not establish causality.',
+        recommendation: 'Use this calibration to monitor lead quality only; do not change score weights from these results alone.'
+      },
+      score_bands: calibrationScoreBands
+    }
+  };
 }

@@ -3,16 +3,19 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { OutcomeInputOutcomeType } from "@workspace/api-client-react";
+import { OutcomeInputOutcomeType, Signal } from "@workspace/api-client-react";
 import { CheckCircle2, XCircle, AlertCircle, Handshake, MessageSquare, ThumbsUp, ThumbsDown, Megaphone, Check } from "lucide-react";
 
 interface OutcomeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (type: OutcomeInputOutcomeType, note?: string) => void;
+  onSubmit: (type: OutcomeInputOutcomeType, note?: string, amount?: number, occurred_at?: string, signal_key?: string) => void;
   isPending: boolean;
   companyName: string;
+  signals: Signal[];
 }
 
 const OUTCOME_OPTIONS = [
@@ -26,15 +29,21 @@ const OUTCOME_OPTIONS = [
   { value: OutcomeInputOutcomeType.suppression_wrong, label: "Suppression Incorrect", icon: AlertCircle, desc: "Overrule safety hold" },
 ];
 
-export function OutcomeDialog({ open, onOpenChange, onSubmit, isPending, companyName }: OutcomeDialogProps) {
+export function OutcomeDialog({ open, onOpenChange, onSubmit, isPending, companyName, signals = [] }: OutcomeDialogProps) {
   const [selected, setSelected] = useState<OutcomeInputOutcomeType | "">("");
   const [note, setNote] = useState("");
+  const [amount, setAmount] = useState("");
+  const [occurredAt, setOccurredAt] = useState("");
+  const [signalKey, setSignalKey] = useState("");
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       setTimeout(() => {
         setSelected("");
         setNote("");
+        setAmount("");
+        setOccurredAt("");
+        setSignalKey("");
       }, 200);
     }
     onOpenChange(isOpen);
@@ -43,7 +52,8 @@ export function OutcomeDialog({ open, onOpenChange, onSubmit, isPending, company
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selected) return;
-    onSubmit(selected, note || undefined);
+    const amountNum = amount ? Number(amount) : undefined;
+    onSubmit(selected, note || undefined, amountNum, occurredAt || undefined, signalKey || undefined);
   };
 
   const needsConfirmation = selected === OutcomeInputOutcomeType.disqualified || selected === OutcomeInputOutcomeType.lost;
@@ -84,8 +94,48 @@ export function OutcomeDialog({ open, onOpenChange, onSubmit, isPending, company
               ))}
             </RadioGroup>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount (Optional)</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="e.g. 50000"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="occurredAt">Date (Optional)</Label>
+                <Input
+                  id="occurredAt"
+                  type="date"
+                  value={occurredAt}
+                  onChange={(e) => setOccurredAt(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {signals && signals.length > 0 && (
+              <div className="space-y-2">
+                <Label>Associated Signal (Optional)</Label>
+                <Select value={signalKey} onValueChange={setSignalKey}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a driving signal..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {signals.map((sig) => (
+                      <SelectItem key={sig.signal_key} value={sig.signal_key}>
+                        {sig.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label htmlFor="note">Notes (Optional)</Label>
+              <Label htmlFor="note">Notes {needsConfirmation ? "" : "(Optional)"}</Label>
               <Textarea
                 id="note"
                 placeholder={needsConfirmation ? "Please provide a reason..." : "Add details about this outcome..."}

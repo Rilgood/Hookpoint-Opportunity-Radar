@@ -243,9 +243,13 @@ paths:
         "200": { description: Audit events }
   /api/v1/analytics/outcomes:
     get:
-      summary: Outcome rates by score band and leading signal
+      summary: Outcome rates and observational score calibration
       responses:
-        "200": { description: Calibration metrics }
+        "200":
+          description: Calibration metrics
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OutcomeAnalyticsResponse" }
   /api/v1/data-quality:
     get:
       summary: Observation, rejection, identity, source-freshness and connector health
@@ -323,6 +327,77 @@ components:
         code: { type: string }
         message: { type: string }
         details: {}
+    Signal:
+      type: object
+      required: [id, company_id, signal_key, label, category, base_weight, strength, confidence, contribution, summary, status, first_seen_at, last_seen_at]
+      properties:
+        id: { type: string }
+        company_id: { type: string }
+        signal_key: { type: string }
+        label: { type: string }
+        category: { type: string }
+        base_weight: { type: number }
+        strength: { type: number }
+        confidence: { type: number }
+        contribution: { type: number }
+        summary: { type: string }
+        status: { type: string }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+    OutcomeAnalyticsData:
+      type: object
+      required: [totals, score_bands, signal_performance, calibration]
+      properties:
+        totals: { type: array, items: { type: object, additionalProperties: true } }
+        score_bands: { type: array, items: { type: object, additionalProperties: true } }
+        signal_performance: { type: array, items: { type: object, additionalProperties: true } }
+        calibration: { $ref: "#/components/schemas/OutcomeCalibration" }
+    OutcomeAnalyticsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: "#/components/schemas/OutcomeAnalyticsData" }
+        meta:
+          type: object
+          required: [request_id, duration_ms]
+          properties:
+            request_id: { type: string }
+            duration_ms: { type: integer }
+    OutcomeCalibration:
+      type: object
+      required: [summary, score_bands]
+      properties:
+        summary: { $ref: "#/components/schemas/CalibrationSummary" }
+        score_bands:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items: { $ref: "#/components/schemas/CalibrationScoreBand" }
+    CalibrationSummary:
+      type: object
+      required: [labeled_accounts, qualified_accounts, negative_accounts, minimum_sample, min_each_class, sufficient_sample, cohort_note, recommendation]
+      properties:
+        labeled_accounts: { type: integer, minimum: 0 }
+        qualified_accounts: { type: integer, minimum: 0 }
+        negative_accounts: { type: integer, minimum: 0 }
+        minimum_sample: { type: integer, const: 30 }
+        min_each_class: { type: integer, const: 10 }
+        sufficient_sample: { type: boolean }
+        cohort_note: { type: string }
+        recommendation: { type: string, readOnly: true }
+    CalibrationScoreBand:
+      type: object
+      required: [score_band, labeled, qualified, negative, raw_qualified_rate, smoothed_qualified_rate, wilson_95_lower, wilson_95_upper, qualified_rate_lift_vs_cold]
+      properties:
+        score_band: { type: string, enum: [hot, warm, watch, cold] }
+        labeled: { type: integer, minimum: 0 }
+        qualified: { type: integer, minimum: 0 }
+        negative: { type: integer, minimum: 0 }
+        raw_qualified_rate: { type: number }
+        smoothed_qualified_rate: { type: number }
+        wilson_95_lower: { type: number }
+        wilson_95_upper: { type: number }
+        qualified_rate_lift_vs_cold: { type: [number, "null"] }
     CompanyInput:
       type: object
       properties:
