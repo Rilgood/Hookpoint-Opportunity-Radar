@@ -117,7 +117,7 @@ Move to managed Postgres and durable workers before any of the following:
 
 ## Go-live checklist
 
-- `npm run check`, `npm test` and `npm run verify` pass in the release image
+- `npm run check` and `npm test` pass in the release image
 - `/ready` is `200` and reports no critical issue
 - Database storage is durable and backups restore successfully
 - Authentication and least-privilege key lifecycle work

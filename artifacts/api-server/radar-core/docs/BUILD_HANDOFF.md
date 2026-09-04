@@ -10,7 +10,7 @@ The full local/Docker path is functional with persistent SQLite. The Vercel adap
 
 ## First implementation sequence
 
-1. Run `npm run check`, `npm test` and `npm run verify`.
+1. Run `npm run check` and `npm test`.
 2. Generate independent 32+ character admin, hash and webhook secrets.
 3. Provision durable storage and a tested backup/restore path.
 4. Put the console behind SSO or distribute least-privilege API keys.

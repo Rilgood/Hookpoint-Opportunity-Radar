@@ -45,14 +45,16 @@ node src/server.js
 
 Open `http://localhost:8787`. With `AUTH_REQUIRED=false`, the local console uses the default tenant. The signed webhook remains unavailable until `CONNECTOR_WEBHOOK_SECRET` is configured.
 
-Verify a clean system end to end:
+Verify a clean checkout:
 
 ```bash
+npm run check
 npm test
-npm run verify
 ```
 
-The proof uses an isolated temporary database, confirms the starting dataset is empty, ingests canonical test fixtures, checks entity resolution, scoring and crisis suppression, exercises scoped API-key lifecycle, reads quality telemetry, and exports CSV. Nothing is written to the working database.
+`npm run check` syntax-checks every file under `src/` and `test/`. `npm test` runs the automated suite against in-memory and temporary SQLite databases: it confirms the starting dataset is empty, ingests canonical fixtures, and exercises entity resolution, scoring, crisis suppression, webhook replay defense, connector hardening and CSV export. Nothing is written to the working database.
+
+To start over locally, stop the server and delete the SQLite file at `DATABASE_PATH` (default `./data/hookpoint-radar.sqlite`) along with its `-wal` and `-shm` companions; the schema is recreated on the next start.
 
 ## Secure single-instance deployment
 
@@ -203,7 +205,6 @@ Before horizontal scaling, move operational data to Postgres, schedules to durab
 config/                 Connector, signal and scoring configuration
 docs/                   Architecture, contracts, security and OpenAPI
 public/                 Operator console
-scripts/                Reset and isolated release verification
 src/connectors/         Provider collectors and normalizers
 src/db/                 SQLite schema, migrations and database boundary
 src/http/               Routing, I/O and security controls
