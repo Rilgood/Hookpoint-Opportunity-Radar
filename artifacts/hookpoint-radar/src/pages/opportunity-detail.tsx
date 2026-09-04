@@ -132,7 +132,7 @@ export function RecommendationPanels({
                         <p className="mt-2.5 text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
                           {pt.source_count}{" "}
                           {pt.source_count === 1 ? "source" : "sources"} &bull;{" "}
-                          seen {formatDate(pt.last_seen_at)}
+                          seen {pt.last_seen_at ? formatDate(pt.last_seen_at) : "unknown"}
                         </p>
                       </li>
                     ))}

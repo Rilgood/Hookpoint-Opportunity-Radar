@@ -148,6 +148,13 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getGetRadarDashboardUrl = () => {
 
 
@@ -218,6 +225,13 @@ export function useGetRadarDashboard<TData = Awaited<ReturnType<typeof getRadarD
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getListRadarCompaniesUrl = (params?: ListRadarCompaniesParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -295,6 +309,13 @@ export function useListRadarCompanies<TData = Awaited<ReturnType<typeof listRada
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+
 export const getGetRadarCompanyUrl = (id: string,) => {
 
 
