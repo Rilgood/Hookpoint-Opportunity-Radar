@@ -87,11 +87,21 @@ export function companyDetail(db, tenantId, companyId) {
   const resolutionEvents = db.all('SELECT source, method, confidence, incoming_name, incoming_domain, created_at FROM entity_resolution_events WHERE tenant_id=? AND company_id=? ORDER BY created_at DESC LIMIT 100', [tenantId, companyId]);
   const reviewActions = db.all('SELECT action, actor, note, details_json, created_at FROM identity_review_actions WHERE tenant_id=? AND company_id=? ORDER BY created_at DESC LIMIT 100', [tenantId, companyId])
     .map(({ details_json: detailsJson, ...action }) => ({ ...action, details: json(detailsJson, {}) }));
+  const mergedRecommendationContexts = db.all(`SELECT details_json, created_at FROM identity_review_actions
+    WHERE tenant_id=? AND company_id=? AND action='identity.merge_received' ORDER BY created_at DESC`, [tenantId, companyId])
+    .map(({ details_json: detailsJson, created_at: mergedAt }) => ({ details: json(detailsJson, {}), merged_at: mergedAt }))
+    .filter((action) => action.details.source_recommendation)
+    .map(({ details, merged_at: mergedAt }) => ({
+      source_company_id: details.source_company_id,
+      source_name: details.source_name,
+      merged_at: mergedAt,
+      ...details.source_recommendation
+    }));
   const conflicts = resolutionEvents.flatMap((event) => [
     event.incoming_name && normalizeConflict('name', company.name, event.incoming_name, event),
     event.incoming_domain && normalizeConflict('domain', company.domain, event.incoming_domain, event)
   ]).filter(Boolean);
-  return { company, signals, observations, people, recommendation: parsedRecommendation, events, outcomes, score_history: scoreHistory,
+  return { company, signals, observations, people, recommendation: parsedRecommendation, merged_recommendation_contexts: mergedRecommendationContexts, events, outcomes, score_history: scoreHistory,
     identity_review: { status: company.identity_review_status, aliases, resolution_events: resolutionEvents, conflicting_attributes: conflicts, actions: reviewActions } };
 }
 

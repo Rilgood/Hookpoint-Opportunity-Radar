@@ -7,6 +7,7 @@ import { config } from '../src/config.js';
 import { bootstrap } from '../src/services/bootstrap.js';
 import { createCompany, mergeCompanies, separateCompany, upsertPeople } from '../src/services/entities.js';
 import { ingestOne } from '../src/services/ingestion.js';
+import { companyDetail } from '../src/services/queries.js';
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -30,7 +31,7 @@ async function startApp(db) {
   };
 }
 
-test('merging accounts retains aliases, contacts, observations, signal evidence, and the surviving recommendation', () => {
+test('merging accounts retains aliases, contacts, observations, signal evidence, and both recommendation contexts', () => {
   const db = setup();
   const tenantId = config.defaultTenantId;
   const source = createCompany(db, tenantId, { name: 'Source Identity', domain: 'source-identity.test', crm_id: 'source-crm' });
@@ -51,6 +52,11 @@ test('merging accounts retains aliases, contacts, observations, signal evidence,
   upsertPeople(db, tenantId, target.id, [{ full_name: 'Target Contact', external_id: 'target-contact' }], 'target_crm');
   const targetRecommendation = db.get('SELECT id FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, target.id]);
   assert.ok(targetRecommendation, 'target has a recommendation before the merge');
+  const sourceRecommendation = db.get('SELECT * FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, source.id]);
+  assert.ok(sourceRecommendation, 'source has a recommendation before the merge');
+  const sourceProofPoints = [{ label: 'Source proof point', summary: 'Source proof that must survive.' }];
+  db.run(`UPDATE recommendations SET rationale=?, proof_points_json=? WHERE id=?`,
+    ['Source rationale that must survive the merge.', JSON.stringify(sourceProofPoints), sourceRecommendation.id]);
 
   assert.throws(
     () => mergeCompanies(db, tenantId, source.id, { target_company_id: target.id }),
@@ -71,6 +77,23 @@ test('merging accounts retains aliases, contacts, observations, signal evidence,
   assert.equal(db.get('SELECT COUNT(*) count FROM signal_evidence WHERE signal_id=(SELECT id FROM signals WHERE company_id=? AND signal_key=?)', [target.id, 'product_launch']).count, 2);
   assert.equal(db.get('SELECT id FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, target.id]).id, targetRecommendation.id);
   assert.equal(db.get('SELECT COUNT(*) count FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, source.id]).count, 0);
+  assert.equal(db.get('SELECT COUNT(*) count FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, target.id]).count, 1);
+  const detail = companyDetail(db, tenantId, target.id);
+  assert.equal(detail.recommendation.id, targetRecommendation.id);
+  assert.deepEqual(detail.merged_recommendation_contexts.map(({ merged_at, ...context }) => context), [{
+    source_company_id: source.id,
+    source_name: source.name,
+    source_recommendation_id: sourceRecommendation.id,
+    offer: sourceRecommendation.offer,
+    headline: sourceRecommendation.headline,
+    rationale: 'Source rationale that must survive the merge.',
+    outreach_angle: sourceRecommendation.outreach_angle,
+    proof_points: sourceProofPoints,
+    next_action: sourceRecommendation.next_action,
+    generated_by: sourceRecommendation.generated_by,
+    created_at: sourceRecommendation.created_at,
+    updated_at: sourceRecommendation.updated_at,
+  }]);
 
   const mergeAudit = db.get('SELECT * FROM identity_review_actions WHERE tenant_id=? AND company_id=? AND action=?', [tenantId, source.id, 'identity.merged']);
   assert.equal(mergeAudit.actor, 'reviewer@example.test');

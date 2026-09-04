@@ -130,6 +130,7 @@ export function mergeCompanies(db, tenantId, sourceCompanyId, input = {}, actor 
   db.run('UPDATE signals SET company_id=? WHERE tenant_id=? AND company_id=?', [targetCompanyId, tenantId, sourceCompanyId]);
   for (const table of ['lead_events', 'outcomes', 'score_snapshots']) db.run(`UPDATE ${table} SET company_id=? WHERE tenant_id=? AND company_id=?`, [targetCompanyId, tenantId, sourceCompanyId]);
   const targetRecommendation = db.get('SELECT id FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, targetCompanyId]);
+  const sourceRecommendation = db.get('SELECT * FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
   if (targetRecommendation) db.run('DELETE FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
   else db.run('UPDATE recommendations SET company_id=? WHERE tenant_id=? AND company_id=?', [targetCompanyId, tenantId, sourceCompanyId]);
   const aliases = db.all('SELECT * FROM company_aliases WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
@@ -142,7 +143,11 @@ export function mergeCompanies(db, tenantId, sourceCompanyId, input = {}, actor 
     SELECT id, tenant_id, ?, source, identity_type, normalized_value, created_at FROM company_source_identities WHERE tenant_id=? AND company_id=?`, [targetCompanyId, tenantId, sourceCompanyId]);
   db.run('DELETE FROM company_source_identities WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
   recordReviewAction(db, tenantId, sourceCompanyId, 'identity.merged', actor, input.note, { target_company_id: targetCompanyId, source_name: source.name });
-  recordReviewAction(db, tenantId, targetCompanyId, 'identity.merge_received', actor, input.note, { source_company_id: sourceCompanyId, source_name: source.name });
+  recordReviewAction(db, tenantId, targetCompanyId, 'identity.merge_received', actor, input.note, {
+    source_company_id: sourceCompanyId,
+    source_name: source.name,
+    source_recommendation: targetRecommendation && sourceRecommendation ? recommendationContext(sourceRecommendation) : null
+  });
   db.run('DELETE FROM companies WHERE tenant_id=? AND id=?', [tenantId, sourceCompanyId]);
   setReviewStatus(db, tenantId, targetCompanyId, 'confirmed');
   return { source_company_id: sourceCompanyId, target_company_id: targetCompanyId, merged: true };
@@ -313,6 +318,20 @@ function recordReviewAction(db, tenantId, companyId, action, actor, note, detail
   db.run(`INSERT INTO identity_review_actions(id, tenant_id, company_id, action, actor, note, details_json, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [id('identity_review'), tenantId, companyId, action, String(actor).slice(0, 200),
     nullableText(note, 2_000), JSON.stringify(details || {}), nowIso()]);
+}
+function recommendationContext(recommendation) {
+  return {
+    source_recommendation_id: recommendation.id,
+    offer: recommendation.offer,
+    headline: recommendation.headline,
+    rationale: recommendation.rationale,
+    outreach_angle: recommendation.outreach_angle,
+    proof_points: JSON.parse(recommendation.proof_points_json || '[]'),
+    next_action: recommendation.next_action,
+    generated_by: recommendation.generated_by,
+    created_at: recommendation.created_at,
+    updated_at: recommendation.updated_at
+  };
 }
 function moveRows(db, table, tenantId, sourceCompanyId, targetCompanyId, uniqueColumns) {
   const rows = db.all(`SELECT id, ${uniqueColumns.join(', ')} FROM ${table} WHERE tenant_id=? AND company_id=?`, [tenantId, sourceCompanyId]);
