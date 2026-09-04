@@ -110,30 +110,80 @@ export function setConnectorEnabled(db, tenantId, key, enabled, settings = {}) {
   return { ...fields, enabled: Boolean(stored.enabled), configured: Boolean(stored.configured), config: json(configJson) };
 }
 
-export function startScheduler(db, intervalMs = 60_000) {
-  let running = false;
-  const tick = async () => {
-    if (running) return;
-    running = true;
-    try {
-      const due = db.all(`SELECT tenant_id, connector_key, config_json FROM connectors
-        WHERE enabled=1 AND mode!='push' AND cadence!='manual' AND (backoff_until IS NULL OR backoff_until<=?)
-          AND (next_run_at IS NULL OR next_run_at<=?) ORDER BY COALESCE(next_run_at, created_at) ASC LIMIT 20`, [nowIso(), nowIso()]);
-      for (const row of due) {
-        if (!implementedConnectorKeys.has(row.connector_key)) continue;
-        const scheduleInput = json(row.config_json).scheduleInput;
-        if (!scheduleInput) continue;
-        try { await runConnector(db, row.tenant_id, row.connector_key, scheduleInput); }
-        catch (error) { console.error(JSON.stringify({ level: 'error', event: 'connector_run_failed', tenant_id: row.tenant_id, connector: row.connector_key, message: redactText(error.message) })); }
+/**
+ * Runs due pull connectors and refreshes due scores on a fixed interval.
+ *
+ * The first tick runs immediately (asynchronously) and a tick is never
+ * started while a previous one is still in flight. The returned `stop`
+ * function cancels future ticks, prevents any further connector or rescore
+ * work from starting and resolves once the in-flight tick (if any) has
+ * finished, so callers can close the database safely afterwards.
+ *
+ * This scheduler is per process: it assumes one application process owns
+ * the database. Multi-replica deployments need a shared claim/queue.
+ */
+export function startScheduler(db, intervalMs = 60_000, { onEvent } = {}) {
+  let stopped = false;
+  let inFlight = null;
+  const emit = (level, event, details) => {
+    if (onEvent) onEvent({ level, event, ...details });
+    else if (level === 'error') console.error(JSON.stringify({ level, event, ...details }));
+  };
+  const work = async () => {
+    let connectorsRun = 0;
+    let rescored = 0;
+    const due = db.all(`SELECT tenant_id, connector_key, cadence, config_json FROM connectors
+      WHERE enabled=1 AND mode!='push' AND cadence!='manual' AND (backoff_until IS NULL OR backoff_until<=?)
+        AND (next_run_at IS NULL OR next_run_at<=?) ORDER BY COALESCE(next_run_at, created_at) ASC LIMIT 20`, [nowIso(), nowIso()]);
+    for (const row of due) {
+      if (stopped) break;
+      if (!implementedConnectorKeys.has(row.connector_key)) continue;
+      const scheduleInput = json(row.config_json).scheduleInput;
+      if (!scheduleInput) continue;
+      try {
+        const outcome = await runConnector(db, row.tenant_id, row.connector_key, scheduleInput);
+        connectorsRun += 1;
+        emit('info', 'scheduled_connector_run', { tenant_id: row.tenant_id, connector: row.connector_key, run_id: outcome.run_id, status: outcome.status });
+      } catch (error) {
+        // Operational failures (5xx/429/unknown) already set exponential
+        // backoff inside runConnector. A validation-style rejection (4xx)
+        // means the stored schedule input is wrong; it will not fix itself, so
+        // defer to the next cadence slot instead of retrying every tick.
+        const rejected = Boolean(error.status) && error.status < 500 && error.status !== 429;
+        if (rejected) {
+          db.run('UPDATE connectors SET next_run_at=? WHERE tenant_id=? AND connector_key=?', [nextRun(nowIso(), row.cadence), row.tenant_id, row.connector_key]);
+        }
+        emit('error', 'connector_run_failed', { tenant_id: row.tenant_id, connector: row.connector_key, message: redactText(error.message), deferred_to_next_cadence: rejected });
       }
-      try { db.transaction(() => rescoreDueCompanies(db, null, config.rescoreBatchSize)); }
-      catch (error) { console.error(JSON.stringify({ level: 'error', event: 'scheduled_rescore_failed', message: error.message })); }
-    } finally { running = false; }
+    }
+    if (stopped) return;
+    try {
+      const result = db.transaction(() => rescoreDueCompanies(db, null, config.rescoreBatchSize));
+      rescored = Array.isArray(result) ? result.length : 0;
+    } catch (error) {
+      emit('error', 'scheduled_rescore_failed', { message: redactText(error.message) });
+    }
+    emit('debug', 'scheduler_tick', { due: due.length, connectors_run: connectorsRun, rescored });
+  };
+  const tick = () => {
+    if (stopped || inFlight) return inFlight ?? Promise.resolve();
+    // Clear the in-flight marker in a chained `.finally` rather than inside
+    // the async body: a tick with nothing to await would otherwise finish
+    // synchronously, before this assignment lands, and leave `inFlight` set
+    // forever so no later tick could run.
+    inFlight = work()
+      .catch((error) => emit('error', 'scheduler_tick_failed', { message: redactText(error?.message || String(error)) }))
+      .finally(() => { inFlight = null; });
+    return inFlight;
   };
   const timer = setInterval(tick, Math.max(5_000, intervalMs));
   timer.unref();
   queueMicrotask(tick);
-  return () => clearInterval(timer);
+  return async function stop() {
+    stopped = true;
+    clearInterval(timer);
+    if (inFlight) await inFlight.catch(() => {});
+  };
 }
 
 function hasCursor(value) {

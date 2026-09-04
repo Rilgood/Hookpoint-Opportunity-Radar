@@ -41,7 +41,7 @@ All settings are environment variables read in `radar-core/src/config.js`. There
 | `DATABASE_PATH` | `./data/hookpoint-radar.sqlite` relative to the core's resolved root | SQLite fallback when `DATABASE_URL` is unset: a file, or `:memory:` |
 | `ALLOW_EPHEMERAL_STORAGE` | `false` in production | SQLite only: permits `:memory:`/`/tmp` storage in production; never for live data |
 | `DURABLE_STORAGE_CONFIRMED` | `false` in production | SQLite only: operator assertion that `DATABASE_PATH` is on backed-up durable storage. Not needed with Postgres |
-| `SCHEDULER_ENABLED`, `SCHEDULER_INTERVAL_MS` | `true`, `60000` | Only honoured by the standalone `src/server.js` entry point; the host does not start the scheduler |
+| `SCHEDULER_ENABLED`, `SCHEDULER_INTERVAL_MS` | `true`, `60000` | The host starts the in-process scheduler on boot (skipped, with an error log, while readiness reports `schema_out_of_date`) and stops it on shutdown. Each tick runs due enabled pull connectors with their stored `schedule_input` and refreshes a `RESCORE_BATCH_SIZE` batch of due company scores. Minimum interval 5000 ms; `false` disables it (logged as a warning) and leaves only the manual `run`/`rescore` endpoints |
 | `TRUST_PROXY` | `false` | Use `X-Forwarded-For` for rate limiting; set `true` behind a trusted reverse proxy such as the Replit deployment proxy |
 | `RATE_LIMIT_PER_MINUTE`, `MAX_BODY_BYTES`, `MAX_BATCH_RECORDS`, `MAX_EXPORT_ROWS`, `MAX_FUTURE_SKEW_MINUTES`, `CONNECTOR_TIMEOUT_MS`, `CONNECTOR_MAX_RECORDS`, `RESCORE_BATCH_SIZE` | see `config.js` | Request, batch, export and connector bounds |
 | `LOG_LEVEL` | `info` | Core log verbosity |
@@ -70,10 +70,29 @@ For a production topology:
 
 1. Keep operational data in the managed Postgres database (point-in-time recovery and backups are the platform's; verify a restore before adding customer data).
 2. Apply schema changes by migrating the development database and publishing; watch `/api/ready` for `schema_out_of_date` after each publish.
-3. Move connector schedules and due-score refresh to a durable worker; the host does not run the in-process scheduler.
+3. Decide how connector schedules and due-score refresh run once there is more than one host instance (see "Scheduler and autoscale" below): either cap the host at a single instance, or move the scheduler to a durable worker/cron that claims work through the shared database.
 4. Add shared rate limiting for cross-instance enforcement.
 5. Configure production secrets and explicit `ALLOWED_ORIGINS`.
 6. Verify `/api/ready`, tenant isolation and backup/restore before adding connector credentials.
+
+### Scheduler and autoscale
+
+The host runs the core's scheduler in-process (`artifacts/api-server/src/index.ts`), so connector cadences enabled through `PATCH /api/v1/connectors/:key` and time-decay rescoring happen without an operator. Two properties of the current autoscale publish target limit that:
+
+- **It only ticks while an instance is running.** Autoscale scales to zero when idle, so an hourly cadence fires on the first tick after the next request wakes the service, not at the top of the hour. Any request (including an external uptime ping) is enough to wake it; the startup tick runs immediately.
+- **It is per process, but the database is shared.** The connector run lock and the "is a tick in flight" guard live in memory, while every instance now writes to the same managed Postgres database. If autoscale runs more than one instance at the same time, two instances can pick the same due connector in the same tick and ingest it twice (ingestion deduplicates records, but provider quota is spent and duplicate `connector_runs` rows appear). Until due connectors are claimed atomically in the database, cap the deployment at one instance, or set `SCHEDULER_ENABLED=false` on the web instances and run one dedicated worker (the standalone `radar-core/src/server.js` wiring shows the minimal start/stop contract).
+
+The scheduler does not start while `/api/ready` reports `schema_out_of_date`; migrate and republish, then restart. Scheduler outcomes are visible in `/api/v1/connectors/runs` and in the host logs as `scheduler: scheduled_connector_run`, `scheduler: connector_run_failed` and `scheduler: scheduled_rescore_failed` events. A scheduled run whose stored `schedule_input` is rejected by the adapter (a 4xx-class failure) is deferred to the next cadence slot rather than retried every tick; provider/network failures use the connector's exponential backoff.
+
+
+### Scheduler and autoscale
+
+The host runs the core's scheduler in-process (`artifacts/api-server/src/index.ts`), so connector cadences enabled through `PATCH /api/v1/connectors/:key` and time-decay rescoring happen without an operator. Two properties of the current autoscale publish target limit that:
+
+- **It only ticks while an instance is running.** Autoscale scales to zero when idle, so an hourly cadence fires on the first tick after the next request wakes the service, not at the top of the hour. Any request (including an external uptime ping) is enough to wake it; the startup tick runs immediately.
+- **It is per process.** The connector run lock and the "is a tick in flight" guard live in memory. With several instances sharing one durable database, two instances could pick the same due connector in the same tick. Today each instance has its own SQLite file (which is the durability problem above), so this cannot happen yet; it becomes relevant on managed Postgres. Before scaling past one instance either cap the deployment at a single instance, or set `SCHEDULER_ENABLED=false` on the web instances and run one dedicated worker (the standalone `radar-core/src/server.js` wiring shows the minimal start/stop contract).
+
+Scheduler outcomes are visible in `/api/v1/connectors/runs` and in the host logs as `scheduler: scheduled_connector_run`, `scheduler: connector_run_failed` and `scheduler: scheduled_rescore_failed` events. A scheduled run whose stored `schedule_input` is rejected by the adapter (a 4xx-class failure) is deferred to the next cadence slot rather than retried every tick; provider/network failures use the connector's exponential backoff.
 
 ## Implemented controls
 

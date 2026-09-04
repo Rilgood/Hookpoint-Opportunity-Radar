@@ -90,7 +90,7 @@ Pull connectors execute with a single-process run lock, input-size and result-si
 
 Provider secrets come only from environment/managed secret storage. Persisted schedule input is recursively checked for credential-like fields, and run metadata is recursively redacted.
 
-The scheduler scans all tenants, skips push/manual sources, requires non-secret schedule input and refreshes a bounded batch of due scores so time decay is applied without new evidence. It is appropriate only for one application process; serverless or multi-replica deployments require a durable queue/cron worker.
+The scheduler scans all tenants, skips push/manual sources, requires non-secret schedule input and refreshes a bounded batch of due scores so time decay is applied without new evidence. The Express host starts it on boot and awaits its in-flight tick on shutdown before closing the database. It is appropriate only for one application process; serverless or multi-replica deployments require a durable queue/cron worker.
 
 ## Refresh economics
 

@@ -17,7 +17,7 @@ import { createApp } from '../src/app.js';
 import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
 import { companyDetail, exportCompaniesCsv, ingestionRejections } from '../src/services/queries.js';
 import { deleteCompany, updateCompany } from '../src/services/entities.js';
-import { runConnector, setConnectorEnabled } from '../src/services/connector-runner.js';
+import { runConnector, setConnectorEnabled, startScheduler } from '../src/services/connector-runner.js';
 import { approveScoreCalibration, recordOutcome } from '../src/services/outcomes.js';
 import { rescoreCompany, rescoreDueCompanies } from '../src/services/signals.js';
 import { consumeWebhookReceipt } from '../src/services/webhooks.js';
@@ -596,6 +596,154 @@ test('requires schedule input before enabling a recurring pull connector', () =>
   assert.throws(() => setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true), /schedule_input/i);
   db.close();
 });
+
+test('scheduler runs an enabled cadence and refreshes due scores without a manual trigger', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  const received = [];
+  GdeltConnector.prototype.run = async function (input) {
+    received.push(input);
+    return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+  };
+  const decaying = ingestOne(db, config.defaultTenantId, {
+    company: { name: 'Scheduled Decay', domain: 'scheduled-decay.test' }, source: 'launch_feed', type: 'product_launch',
+    title: 'Launch announced', observed_at: new Date().toISOString(), attributes: { is_new: true }
+  });
+  db.run("UPDATE companies SET next_refresh_at='2024-03-02T00:00:00.000Z' WHERE id=?", [decaying.company.id]);
+  const events = [];
+  let stop;
+  try {
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Target' }, limit: 5 } });
+    assert.equal(db.get("SELECT COUNT(*) count FROM connector_runs WHERE connector_key='gdelt'").count, 0);
+
+    stop = startScheduler(db, 60_000, { onEvent: (event) => events.push(event) });
+    await waitFor(() => events.some((event) => event.event === 'scheduler_tick'));
+
+    assert.equal(received.length, 1, 'the due connector ran exactly once on the first tick');
+    assert.deepEqual(received[0].company, { name: 'Target' });
+    const runs = db.all("SELECT status, tenant_id FROM connector_runs WHERE connector_key='gdelt'");
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0].status, 'succeeded');
+    assert.equal(runs[0].tenant_id, config.defaultTenantId);
+    const connector = db.get("SELECT status, next_run_at, last_run_at FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    assert.equal(connector.status, 'ready');
+    assert.ok(connector.last_run_at);
+    assert.ok(connector.next_run_at > connector.last_run_at, 'the next run is scheduled after the cadence');
+
+    const refreshed = db.get('SELECT next_refresh_at FROM companies WHERE id=?', [decaying.company.id]);
+    assert.ok(refreshed.next_refresh_at > '2024-03-02T00:00:00.000Z', 'the due company was rescored by the tick');
+    assert.ok(events.some((event) => event.event === 'scheduled_connector_run' && event.connector === 'gdelt'));
+    assert.equal(events.filter((event) => event.level === 'error').length, 0);
+  } finally {
+    if (stop) await stop();
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('scheduler keeps ticking after an idle tick and picks up a cadence enabled later', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  let runs = 0;
+  GdeltConnector.prototype.run = async function () {
+    runs += 1;
+    return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+  };
+  const originalSetInterval = globalThis.setInterval;
+  let scheduledTick;
+  globalThis.setInterval = (fn) => { scheduledTick = fn; return { unref() {} }; };
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.clearInterval = () => {};
+  const events = [];
+  let stop;
+  try {
+    stop = startScheduler(db, 60_000, { onEvent: (event) => events.push(event) });
+    globalThis.setInterval = originalSetInterval;
+    // First tick: nothing enabled, nothing to await, must not wedge the scheduler.
+    await waitFor(() => events.filter((event) => event.event === 'scheduler_tick').length === 1);
+    assert.equal(runs, 0);
+
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Later' } } });
+    await scheduledTick();
+    assert.equal(runs, 1, 'the interval tick after an idle tick still runs the newly due connector');
+    assert.equal(db.get("SELECT COUNT(*) count FROM connector_runs WHERE connector_key='gdelt' AND status='succeeded'").count, 1);
+    assert.equal(events.filter((event) => event.event === 'scheduler_tick').length, 2);
+  } finally {
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+    if (stop) await stop();
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('scheduler defers a cadence whose schedule input is rejected instead of retrying every tick', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const events = [];
+  let stop;
+  try {
+    // GDELT rejects schedule input without a target company (a 400-class AppError from the adapter).
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { query: 'no company here' } });
+    const before = db.get("SELECT next_run_at FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]).next_run_at;
+    stop = startScheduler(db, 60_000, { onEvent: (event) => events.push(event) });
+    await waitFor(() => events.some((event) => event.event === 'scheduler_tick'));
+
+    const failure = events.find((event) => event.event === 'connector_run_failed');
+    assert.ok(failure, 'the rejected run is reported');
+    assert.equal(failure.deferred_to_next_cadence, true);
+    assert.equal(db.get("SELECT COUNT(*) count FROM connector_runs WHERE connector_key='gdelt' AND status='failed'").count, 1);
+    const after = db.get("SELECT next_run_at, backoff_until FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    assert.ok(after.next_run_at > before, 'next_run_at moved to the next cadence slot');
+    assert.ok(after.next_run_at > new Date().toISOString(), 'the connector is no longer due');
+    assert.equal(after.backoff_until, null, 'validation rejections do not trigger operational backoff');
+  } finally {
+    if (stop) await stop();
+    db.close();
+  }
+});
+
+test('stopping the scheduler waits for the in-flight run and starts nothing new', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  let release;
+  let started = false;
+  let finished = false;
+  GdeltConnector.prototype.run = async function () {
+    started = true;
+    await new Promise((resolve) => { release = resolve; });
+    finished = true;
+    return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+  };
+  try {
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Target' } } });
+    const stop = startScheduler(db, 60_000, { onEvent: () => {} });
+    await waitFor(() => started);
+    const stopping = stop();
+    let stopped = false;
+    stopping.then(() => { stopped = true; });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(stopped, false, 'stop waits for the in-flight connector run');
+    release();
+    await stopping;
+    assert.equal(finished, true);
+    assert.equal(db.get("SELECT status FROM connector_runs WHERE connector_key='gdelt'").status, 'succeeded');
+  } finally {
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+async function waitFor(predicate, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error('Timed out waiting for condition');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 test('expires stale signals when their score refresh becomes due', () => {
   const db = setup();
