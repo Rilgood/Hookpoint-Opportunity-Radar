@@ -2,10 +2,13 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Worker } from 'node:worker_threads';
 import { openDatabase } from '../src/db/index.js';
+import { schema } from '../src/db/schema.js';
+import { applyMigrations } from '../src/db/migrations.js';
 import { bootstrap } from '../src/services/bootstrap.js';
 import { config } from '../src/config.js';
 import { scoringConfig } from '../src/services/catalog.js';
@@ -14,7 +17,7 @@ import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
 import { companyDetail, exportCompaniesCsv, ingestionRejections } from '../src/services/queries.js';
 import { deleteCompany, updateCompany } from '../src/services/entities.js';
 import { runConnector, setConnectorEnabled } from '../src/services/connector-runner.js';
-import { recordOutcome } from '../src/services/outcomes.js';
+import { approveScoreCalibration, recordOutcome } from '../src/services/outcomes.js';
 import { rescoreCompany, rescoreDueCompanies } from '../src/services/signals.js';
 import { consumeWebhookReceipt } from '../src/services/webhooks.js';
 import { BaseConnector } from '../src/connectors/base.js';
@@ -287,6 +290,76 @@ test('allows only one concurrent score approval from separate database connectio
     db.close();
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('migration preserves the newest approved score version and prevents further conflicts', () => {
+  const native = new DatabaseSync(':memory:');
+  const now = new Date().toISOString();
+  try {
+    native.exec(schema);
+    native.exec(`
+      CREATE TABLE scoring_versions (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        version TEXT NOT NULL,
+        status TEXT NOT NULL,
+        base_version TEXT NOT NULL,
+        config_json TEXT NOT NULL,
+        evaluation_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        approved_at TEXT,
+        approved_by TEXT,
+        UNIQUE(tenant_id, version)
+      );
+      INSERT INTO scoring_versions(id, tenant_id, version, status, base_version, config_json, evaluation_json, created_at, created_by, approved_at)
+        VALUES
+          ('approved-old', 'legacy-tenant', 'rules-1.1', 'approved', 'rules-1.0', '{}', '{}', '2025-01-01T00:00:00.000Z', 'admin-a', '2025-01-02T00:00:00.000Z'),
+          ('approved-new', 'legacy-tenant', 'rules-1.2', 'approved', 'rules-1.1', '{}', '{}', '2025-02-01T00:00:00.000Z', 'admin-b', '2025-02-02T00:00:00.000Z');
+    `);
+    const recordMigration = native.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)');
+    for (let version = 2; version <= 8; version += 1) recordMigration.run(version, now);
+    applyMigrations(native);
+
+    assert.deepEqual(
+      native.prepare(`SELECT id, status FROM scoring_versions WHERE tenant_id='legacy-tenant' ORDER BY id`).all().map((row) => ({ ...row })),
+      [{ id: 'approved-new', status: 'approved' }, { id: 'approved-old', status: 'superseded' }]
+    );
+    assert.throws(
+      () => native.prepare(`UPDATE scoring_versions SET status='approved' WHERE id='approved-old'`).run(),
+      (error) => error.code === 'ERR_SQLITE_ERROR' && error.errcode === 2067
+    );
+  } finally {
+    native.close();
+  }
+});
+
+test('reports a clear conflict when the active score version constraint rejects approval', () => {
+  const proposal = {
+    id: 'proposed-version',
+    status: 'proposed',
+    base_version: scoringConfig.version,
+  };
+  const uniqueConstraint = Object.assign(
+    new Error('UNIQUE constraint failed: scoring_versions.tenant_id'),
+    { code: 'ERR_SQLITE_ERROR', errcode: 2067 }
+  );
+  const db = {
+    get(sql) {
+      if (sql.includes('SELECT * FROM scoring_versions')) return proposal;
+      return undefined;
+    },
+    run(sql) {
+      if (sql.includes("SET status='approved'")) throw uniqueConstraint;
+    },
+  };
+
+  assert.throws(
+    () => approveScoreCalibration(db, 'tenant', proposal.id, 'admin'),
+    (error) => error.status === 409
+      && error.code === 'score_approval_conflict'
+      && error.message === 'Another scoring version is already active for this workspace. Refresh and try again.'
+  );
 });
 
 test('starts with an empty company dataset and no runtime sample connector', () => {

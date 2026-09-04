@@ -197,8 +197,22 @@ export function approveScoreCalibration(db, tenantId, recommendationId, actor) {
   if (proposal.base_version !== latest.version) throw new AppError(409, 'score_recommendation_stale', 'This recommendation was evaluated against an older scoring version. Run a new evaluation.');
   const now = nowIso();
   db.run(`UPDATE scoring_versions SET status='superseded' WHERE tenant_id=? AND status='approved'`, [tenantId]);
-  db.run(`UPDATE scoring_versions SET status='approved', approved_at=?, approved_by=? WHERE id=?`, [now, actor, recommendationId]);
+  try {
+    db.run(`UPDATE scoring_versions SET status='approved', approved_at=?, approved_by=? WHERE id=?`, [now, actor, recommendationId]);
+  } catch (error) {
+    if (isActiveScoreVersionConflict(error)) {
+      throw new AppError(409, 'score_approval_conflict', 'Another scoring version is already active for this workspace. Refresh and try again.');
+    }
+    throw error;
+  }
   return scoringVersion(db, tenantId, recommendationId);
+}
+
+function isActiveScoreVersionConflict(error) {
+  return error?.code === 'ERR_SQLITE_ERROR'
+    && error?.errcode === 2067
+    && typeof error.message === 'string'
+    && error.message.includes('UNIQUE constraint failed: scoring_versions.tenant_id');
 }
 
 function firstOutcomeLabels(db, tenantId) {

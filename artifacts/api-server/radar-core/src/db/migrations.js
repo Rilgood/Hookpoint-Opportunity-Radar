@@ -193,6 +193,31 @@ const migrations = [
           ON scoring_versions(tenant_id, status, created_at DESC);
       `);
     }
+  },
+  {
+    version: 9,
+    run(db) {
+      // Retain the most recently approved version if legacy data contains
+      // competing active versions, then let the partial unique index enforce
+      // that invariant for all future writes.
+      db.exec(`
+        UPDATE scoring_versions
+          SET status='superseded'
+          WHERE id IN (
+            SELECT id FROM (
+              SELECT id, ROW_NUMBER() OVER (
+                PARTITION BY tenant_id
+                ORDER BY approved_at DESC, created_at DESC, id DESC
+              ) duplicate_number
+              FROM scoring_versions
+              WHERE status='approved'
+            ) WHERE duplicate_number > 1
+          );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_scoring_versions_one_approved
+          ON scoring_versions(tenant_id)
+          WHERE status='approved';
+      `);
+    }
   }
 ];
 /*
