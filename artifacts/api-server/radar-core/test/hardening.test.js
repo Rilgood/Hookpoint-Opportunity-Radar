@@ -1,8 +1,10 @@
+import http from 'node:http';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openDatabase } from '../src/db/index.js';
 import { bootstrap } from '../src/services/bootstrap.js';
 import { config } from '../src/config.js';
+import { createApp } from '../src/app.js';
 import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
 import { companyDetail, exportCompaniesCsv, ingestionRejections } from '../src/services/queries.js';
 import { deleteCompany, updateCompany } from '../src/services/entities.js';
@@ -13,9 +15,48 @@ import { consumeWebhookReceipt } from '../src/services/webhooks.js';
 import { BaseConnector } from '../src/connectors/base.js';
 import { GdeltConnector } from '../src/connectors/news.js';
 import { authenticate, setTrustedPrincipal } from '../src/http/security.js';
-import { sha256 } from '../src/lib.js';
+import { id, sha256 } from '../src/lib.js';
 
 function setup() { const db = openDatabase(':memory:'); bootstrap(db); return db; }
+
+async function startApp(db) {
+  const handler = createApp(db, { serveStaticAssets: false });
+  const server = http.createServer((req, res) => {
+    const browserUserId = req.headers['x-test-browser-user'];
+    if (browserUserId) setTrustedPrincipal(req, { userId: String(browserUserId) });
+    return handler(req, res);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  return {
+    request(path, { headers = {}, body } = {}) {
+      return fetch(`http://127.0.0.1:${port}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    },
+    close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+  };
+}
+
+function addCalibrationData(db, tenantId) {
+  for (let index = 0; index < 120; index += 1) {
+    const companyId = `calibration-${index}`;
+    const occurredAt = new Date(Date.UTC(2021, 0, index + 1)).toISOString();
+    const now = new Date().toISOString();
+    const qualified = index >= 90 ? index % 2 === 0 : index % 3 === 0;
+    db.run(`INSERT INTO companies(id, tenant_id, name, normalized_name, domain, opportunity_score, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [companyId, tenantId, companyId, companyId, `${companyId}.test`, 10, now, now]);
+    db.run(`INSERT INTO score_snapshots(id, tenant_id, company_id, score_version, opportunity_score, opportunity_tier,
+      fit_score, need_score, intent_score, timing_score, risk_score, active_signal_count, components_json, computed_at)
+      VALUES (?, ?, ?, 'rules-1.1', 0, 'cold', ?, ?, 0, 0, 0, 0, '{}', ?)`,
+    [`snapshot-${companyId}`, tenantId, companyId, qualified ? 0 : 100, qualified ? 70 : 0, occurredAt]);
+    db.run(`INSERT INTO outcomes(id, tenant_id, company_id, outcome_type, score_at_outcome, metadata_json, occurred_at, created_at)
+      VALUES (?, ?, ?, ?, 10, '{}', ?, ?)`,
+    [`outcome-${companyId}`, tenantId, companyId, qualified ? 'meeting' : 'lost', occurredAt, now]);
+  }
+}
 
 test('derives a private tenant only from the trusted Clerk principal', () => {
   const db = setup();
@@ -55,6 +96,57 @@ test('authenticates a direct API key through the existing core path', () => {
   assert.equal(auth.tenantId, config.defaultTenantId);
   assert.deepEqual(auth.scopes, ['read', 'write']);
   db.close();
+});
+
+test('rejects a stale score approval after another administrator approves a newer version', async () => {
+  const db = setup();
+  const tenantId = 'browser_admin';
+  const apiKey = 'hp_live_calibration_admin';
+  const now = new Date().toISOString();
+  db.run(`INSERT INTO tenants(id, name, slug, settings_json, created_at, updated_at)
+    VALUES (?, 'Browser admin', 'browser-admin', '{}', ?, ?)`, [tenantId, now, now]);
+  db.run(`INSERT INTO api_keys(id, tenant_id, name, key_prefix, key_hash, scopes, created_at)
+    VALUES (?, ?, ?, ?, ?, 'admin', ?)`,
+  ['key_calibration_admin', tenantId, 'Calibration API key', apiKey.slice(0, 16), sha256(apiKey), now]);
+  addCalibrationData(db, tenantId);
+  const app = await startApp(db);
+
+  try {
+    const evaluation = await app.request('/api/v1/analytics/outcomes/evaluate', {
+      headers: { 'x-api-key': apiKey },
+    });
+    assert.equal(evaluation.status, 200);
+    const original = (await evaluation.json()).data.recommendation;
+    assert.equal(original.status, 'proposed');
+
+    const alternativeId = id('score_version');
+    db.run(`INSERT INTO scoring_versions(id, tenant_id, version, status, base_version, config_json, evaluation_json, created_at, created_by)
+      VALUES (?, ?, 'rules-1.1-independent-review', 'proposed', 'rules-1.1', ?, '{}', ?, 'other-operator')`,
+    [alternativeId, tenantId, JSON.stringify({ ...original.config, version: 'rules-1.1-independent-review' }), now]);
+
+    const approved = await app.request(`/api/v1/analytics/outcomes/recommendations/${alternativeId}/approve`, {
+      headers: { 'x-test-browser-user': tenantId },
+    });
+    assert.equal(approved.status, 200);
+    assert.equal((await approved.json()).data.status, 'approved');
+
+    const stale = await app.request(`/api/v1/analytics/outcomes/recommendations/${original.id}/approve`, {
+      headers: { 'x-api-key': apiKey },
+    });
+    assert.equal(stale.status, 409);
+    assert.equal((await stale.json()).error.code, 'score_recommendation_stale');
+    assert.equal(db.get('SELECT status FROM scoring_versions WHERE id=?', [original.id]).status, 'proposed');
+
+    const audits = db.all(`SELECT action, actor, resource_id FROM audit_events
+      WHERE tenant_id=? AND action IN ('scoring.evaluation_created', 'scoring.version_approved') ORDER BY created_at, id`, [tenantId]);
+    assert.deepEqual(audits, [
+      { action: 'scoring.evaluation_created', actor: 'Calibration API key', resource_id: original.id },
+      { action: 'scoring.version_approved', actor: `clerk:${tenantId}`, resource_id: alternativeId },
+    ]);
+  } finally {
+    await app.close();
+    db.close();
+  }
 });
 
 test('starts with an empty company dataset and no runtime sample connector', () => {
