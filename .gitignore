@@ -51,3 +51,9 @@ Thumbs.db
 # SQLite write-ahead log runtime state
 *.sqlite-shm
 *.sqlite-wal
+
+# Playwright traces and screenshots
+.e2e-artifacts/
+
+# Playwright traces and screenshots
+.e2e-artifacts/
