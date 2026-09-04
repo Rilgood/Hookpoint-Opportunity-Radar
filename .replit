@@ -28,6 +28,10 @@ args = "radar-core"
 task = "workflow.run"
 args = "browser-smoke"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "api-server"
+
 [[workflows.workflow]]
 name = "api-contract"
 author = "agent"
@@ -57,6 +61,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm run verify:browser-smoke"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "api-server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm run verify:api-server"
 
 [workflows.workflow.metadata]
 isValidation = true
