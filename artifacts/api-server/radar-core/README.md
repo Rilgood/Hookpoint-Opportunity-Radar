@@ -43,7 +43,7 @@ There is exactly one runtime for this code: the Express host in `artifacts/api-s
 - `artifacts/api-server/src/app.ts` imports `createApp` from `radar-core/src/app.js` with `serveStaticAssets: false` and forwards `/api/v1/*`, `/api/health` and `/api/ready` to it. Everything else on the host (Clerk proxy, `/api/healthz`) is ordinary Express.
 - Browser users sign in with Clerk. The host verifies the session and hands the Clerk user ID to the core through `setTrustedPrincipal`, which maps each user to a private workspace tenant with `read`, `write` and `admin` scopes. Requests that carry an `X-API-Key` header bypass Clerk entirely and are authenticated by the core's own API-key store.
 - The operator console is the React/Vite app in `artifacts/hookpoint-radar`. `radar-core` ships no HTML, CSS or static assets, and the host never serves any from it.
-- `artifacts/api-server` is bundled with esbuild into `artifacts/api-server/dist/index.mjs`. Because the core resolves its root directory relative to the running file, the **bundled** runtime reads `artifacts/api-server/config/*.json` and, when no `DATABASE_URL` is set, stores its SQLite fallback at `artifacts/api-server/data/hookpoint-radar.sqlite`. The copies under `radar-core/config/` are what the tests and any direct `node src/server.js` run use. Keep the two `config/` directories identical; edit both when you change a catalog or scoring version.
+- `artifacts/api-server` is bundled with esbuild into `artifacts/api-server/dist/index.mjs`. The core resolves its root directory relative to the running file, so the **bundled** runtime's root is `artifacts/api-server/` and, when no `DATABASE_URL` is set, its SQLite fallback lives at `artifacts/api-server/data/hookpoint-radar.sqlite`. The scoring, signal and connector catalogs are deliberately **not** root-relative: `config/` under this package is the only copy, and the host's first import (`artifacts/api-server/src/radarConfigDir.ts`) sets `RADAR_CONFIG_DIR` to `radar-core/config` before any core module loads, so the live API, `node --test` and a direct `node src/server.js` all read the same files. A `RADAR_CONFIG_DIR` that is missing any of the three catalog files makes the core throw at import rather than start with a different rule set. Edit a catalog or bump the scoring version in one place only.
 - The host starts the core's in-process scheduler (`startScheduler` in `src/services/connector-runner.js`) from `artifacts/api-server/src/index.ts` once the schema check passes, and stops it on `SIGTERM`/`SIGINT` before closing the database. Every `SCHEDULER_INTERVAL_MS` (default 60 s, minimum 5 s) it runs each enabled pull connector whose `next_run_at` is due, using its stored non-secret `schedule_input`, and refreshes a batch of due company scores so time decay changes rankings without new evidence. Set `SCHEDULER_ENABLED=false` to turn this off (the host logs a warning); `POST /api/v1/connectors/:key/run` and `POST /api/v1/rescore` remain available for on-demand runs. The scheduler ticks only while a host process is alive, and it is per-process (see `docs/DEPLOYMENT_AND_SECURITY.md` for what that means on autoscale).
 
 The deployment target is the Replit autoscale publish described in `artifacts/api-server/.replit-artifact/artifact.toml`: build with `pnpm --filter @workspace/api-server run build`, run `node --enable-source-maps artifacts/api-server/dist/index.mjs` with `NODE_ENV=production`, and use `/api/healthz` as the startup probe. Replit injects the production `DATABASE_URL` of the managed Postgres database, which is where every table lives (see [Storage](#storage)).
@@ -220,7 +220,7 @@ Operational data already lives in managed Postgres. Before horizontal scaling, m
 
 ```text
 artifacts/api-server/radar-core/
-  config/               Connector, signal and scoring configuration (mirrored in ../config for the bundled host)
+  config/               Connector, signal and scoring configuration (the only copy; the host reads it too)
   docs/                 Architecture, contracts, security and OpenAPI
   src/app.js            createApp(db, { serveStaticAssets }) – the HTTP handler the host mounts
   src/server.js         Bare node:http entry point (not used by the host)
@@ -231,7 +231,7 @@ artifacts/api-server/radar-core/
   test/                 Domain, normalizer and hardening tests
 artifacts/api-server/
   src/app.ts            Express host: Clerk session bridge and radar mount
-  config/               Catalog and scoring files read by the bundled runtime
+  src/radarConfigDir.ts Points the bundled core at radar-core/config (RADAR_CONFIG_DIR)
   data/                 SQLite fallback database when DATABASE_URL is unset (git-ignored)
 artifacts/hookpoint-radar/ Operator console (React + Vite + Clerk)
 ```

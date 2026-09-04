@@ -1,10 +1,10 @@
 ---
-name: radar-core config lives in two places
-description: Rule for editing scoring/signal/connector catalogs — both copies must change together, because the bundled host resolves a different root than the tests.
+name: radar-core root vs config dir under the bundled host
+description: Why the api-server host must set RADAR_CONFIG_DIR before importing radar-core, and why the core's root-relative paths (database, .env) still differ between the bundle and the tests.
 ---
 
-**Rule:** change `scoring.json`, `signal-catalog.json` or `connector-catalog.json` in `artifacts/api-server/config/` **and** `artifacts/api-server/radar-core/config/` together. Likewise, keep the "How this package is deployed" section of radar-core's README in step if the way api-server mounts the core changes.
+**Rule:** radar-core's catalogs (`scoring.json`, `signal-catalog.json`, `connector-catalog.json`) live only in `artifacts/api-server/radar-core/config/`. The host's very first import in `app.ts` is a side-effect module that sets `RADAR_CONFIG_DIR` to that directory; keep it first, and never reintroduce a mirror copy under `artifacts/api-server/config/`.
 
-**Why:** the core computes its root from `import.meta.url`, and esbuild bundles the host to `artifacts/api-server/dist/`, so the live API resolves `../config` to the api-server copy while `node --test` uses the radar-core copy. Nothing enforces parity; drift means green tests and a differently-scoring production API. (A follow-up to enforce or remove the mirror was proposed in Sept 2026.)
+**Why:** the core derives `rootDir` from `import.meta.url`, and esbuild bundles the host into `artifacts/api-server/dist/`, so root-relative paths point at `artifacts/api-server/` in the bundle but at `radar-core/` under `node --test`. A tracked mirror of the config directory used to paper over this, and drift between the two copies meant green tests with a differently-scoring production API. The core now fails at import if `RADAR_CONFIG_DIR` lacks any catalog file.
 
-**How to apply:** any scoring version bump, new signal rule or connector manifest change; any change to the mount in api-server's app.ts.
+**How to apply:** the database path and `.env` lookup are still root-relative (dev DB at `artifacts/api-server/data/`), so any change to storage location must reason about the bundled root, not the package root. If the host ever stops bundling the core (esbuild `external`), `RADAR_CONFIG_DIR` becomes redundant but harmless. Keep the README "How this package is deployed" section in step with any change to the mount.

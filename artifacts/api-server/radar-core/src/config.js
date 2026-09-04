@@ -27,6 +27,28 @@ const boolean = (value, fallback = false) => {
   return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
 };
 
+// The catalog and scoring files are the source of truth for signal rules and
+// score maths, so their location must never depend on where the *running*
+// file happens to be. rootDir is derived from import.meta.url, which points at
+// the bundle (artifacts/api-server/dist) when the host is built with esbuild.
+// Hosts that bundle the core therefore set RADAR_CONFIG_DIR to this package's
+// config/ directory before importing it; tests and direct `node src/server.js`
+// runs fall back to the sibling config/ directory.
+function resolveConfigDir() {
+  const override = String(process.env.RADAR_CONFIG_DIR || '').trim();
+  const dir = override ? path.resolve(override) : path.join(rootDir, 'config');
+  for (const file of ['signal-catalog.json', 'connector-catalog.json', 'scoring.json']) {
+    const candidate = path.join(dir, file);
+    if (!fs.existsSync(candidate)) {
+      throw new Error(`radar-core config directory ${dir} is missing ${file}`
+        + (override ? ' (RADAR_CONFIG_DIR is set; point it at radar-core/config).' : '.'));
+    }
+  }
+  return dir;
+}
+
+const configDir = resolveConfigDir();
+
 const databaseSetting = process.env.DATABASE_PATH || './data/hookpoint-radar.sqlite';
 const databasePath = databaseSetting === ':memory:' ? ':memory:' : path.resolve(rootDir, databaseSetting);
 // A Postgres URL (Replit injects DATABASE_URL for its managed database) takes
@@ -76,9 +98,10 @@ export const config = Object.freeze({
   rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE || 600),
   trustProxy: boolean(process.env.TRUST_PROXY, Boolean(process.env.VERCEL)),
   publicDir: path.join(rootDir, 'public'),
-  signalCatalogPath: path.join(rootDir, 'config', 'signal-catalog.json'),
-  connectorCatalogPath: path.join(rootDir, 'config', 'connector-catalog.json'),
-  scoringConfigPath: path.join(rootDir, 'config', 'scoring.json')
+  configDir,
+  signalCatalogPath: path.join(configDir, 'signal-catalog.json'),
+  connectorCatalogPath: path.join(configDir, 'connector-catalog.json'),
+  scoringConfigPath: path.join(configDir, 'scoring.json')
 });
 
 export function runtimeIssues(db) {

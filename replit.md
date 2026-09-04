@@ -4,7 +4,7 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (binds `PORT`; 8080 in the `API Server` workflow). It mounts the dependency-free `artifacts/api-server/radar-core` kernel under `/api`; see `artifacts/api-server/radar-core/README.md` for how that is wired and why `artifacts/api-server/config/` mirrors `radar-core/config/`.
+- `pnpm --filter @workspace/api-server run dev` — run the API server (binds `PORT`; 8080 in the `API Server` workflow). It mounts the dependency-free `artifacts/api-server/radar-core` kernel under `/api`; see `artifacts/api-server/radar-core/README.md` for how that is wired. Scoring/signal/connector catalogs live only in `radar-core/config/`; the host points the bundled core at them via `RADAR_CONFIG_DIR`.
 - `pnpm run verify:radar-core` — syntax check + `node --test` suite for the radar core, run on in-memory SQLite and again against the workspace Postgres in disposable schemas when `DATABASE_URL` is set (also the `radar-core` validation workflow)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages

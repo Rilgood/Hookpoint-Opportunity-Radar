@@ -1,3 +1,6 @@
+// Side-effect import: sets RADAR_CONFIG_DIR before the radar-core imports
+// below are evaluated. Keep it first.
+import "./radarConfigDir";
 import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
