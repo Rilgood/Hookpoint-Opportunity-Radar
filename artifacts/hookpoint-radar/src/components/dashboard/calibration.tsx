@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/loading-states";
 import { Info, Target, TrendingUp, ShieldAlert, BarChart3, CheckCircle2, FlaskConical } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { describeApprovalRejection } from "./approval-errors";
 
 export function CalibrationAnalytics() {
   const { data: analyticsRes, isLoading, isError } = useGetRadarOutcomeAnalytics();
@@ -30,6 +32,15 @@ export function CalibrationAnalytics() {
       },
     },
   });
+
+  const approvalRejection = approve.isError ? describeApprovalRejection(approve.error) : null;
+  const highlightEvaluate = Boolean(approvalRejection?.promptReevaluation);
+
+  const runEvaluation = () => {
+    // A fresh evaluation supersedes whatever rejection the operator was looking at.
+    approve.reset();
+    evaluate.mutate();
+  };
 
   if (isLoading) {
     return <Skeleton className="h-[300px] w-full" />;
@@ -117,7 +128,16 @@ export function CalibrationAnalytics() {
                      Tests only the most recent held-out labels. Proposed weights never apply until an operator approves them.
                    </p>
                  </div>
-                 <Button size="sm" onClick={() => evaluate.mutate()} disabled={evaluate.isPending || approve.isPending}>
+                 <Button
+                   size="sm"
+                   onClick={runEvaluation}
+                   disabled={evaluate.isPending || approve.isPending}
+                   data-highlighted={highlightEvaluate ? "true" : undefined}
+                   className={cn(
+                     highlightEvaluate &&
+                       "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse motion-reduce:animate-none",
+                   )}
+                 >
                    {evaluate.isPending ? "Evaluating…" : "Evaluate holdout"}
                  </Button>
                </div>
@@ -159,7 +179,21 @@ export function CalibrationAnalytics() {
                      AUC: {(evaluation.recommendation.evaluation.before.auc * 100).toFixed(1)}% → {(evaluation.recommendation.evaluation.after.auc * 100).toFixed(1)}%
                      {" "}· Top-quarter qualified rate: {evaluation.recommendation.evaluation.before.top_quartile_qualified_rate.toFixed(1)}% → {evaluation.recommendation.evaluation.after.top_quartile_qualified_rate.toFixed(1)}%
                    </p>
-                   {approve.isError && <p className="text-sm text-destructive">Approval could not be saved. The current score version remains unchanged.</p>}
+                   {approvalRejection && (
+                     <Alert
+                       variant="destructive"
+                       role="alert"
+                       data-testid="approval-rejection"
+                       data-rejection-code={approvalRejection.code}
+                     >
+                       <ShieldAlert className="h-4 w-4" />
+                       <AlertTitle>{approvalRejection.title}</AlertTitle>
+                       <AlertDescription className="space-y-1">
+                         <p>{approvalRejection.message}</p>
+                         <p className="font-semibold">Next step: {approvalRejection.action}</p>
+                       </AlertDescription>
+                     </Alert>
+                   )}
                  </div>
                )}
              </div>

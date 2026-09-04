@@ -171,10 +171,14 @@ test.describe("authenticated decision smoke journey", () => {
     const approvalBody = (await approval.json()) as { error: { code: string; message: string } };
     expect(approvalBody.error.code).toBe("score_recommendation_stale");
 
-    // Operator-visible error, and the working view survives the rejection.
-    await expect(
-      page.getByText("Approval could not be saved. The current score version remains unchanged."),
-    ).toBeVisible();
+    // Operator-visible explanation of *why* it failed, the right next step, and the working view survives.
+    const rejection = page.getByTestId("approval-rejection");
+    await expect(rejection).toBeVisible();
+    await expect(rejection).toHaveAttribute("data-rejection-code", "score_recommendation_stale");
+    await expect(rejection).toContainText("A newer score version was activated.");
+    await expect(rejection).toContainText("The current score version remains unchanged.");
+    await expect(rejection).toContainText("Next step: Re-run the evaluation to propose weights against the current version.");
+    await expect(page.getByRole("button", { name: "Evaluate holdout" })).toHaveAttribute("data-highlighted", "true");
     await expect(page.getByText(`Proposed ${staleVersion}`)).toBeVisible();
     await expect(page.getByText("Outcome Calibration")).toBeVisible();
     await expect(page).toHaveURL(/\/dashboard$/);
@@ -200,6 +204,9 @@ test.describe("authenticated decision smoke journey", () => {
     expect(recommendation.id).not.toBe(staleProposalId);
     expect(recommendation.version.startsWith(`${independentVersion}-cal-`)).toBe(true);
     await expect(page.getByText(`Proposed ${recommendation.version}`)).toBeVisible();
+    // The stale-approval explanation is cleared once a fresh evaluation replaces it.
+    await expect(page.getByTestId("approval-rejection")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Evaluate holdout" })).not.toHaveAttribute("data-highlighted", "true");
 
     const [approval] = await Promise.all([
       page.waitForResponse(
