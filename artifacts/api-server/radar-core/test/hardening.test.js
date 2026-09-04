@@ -1,9 +1,14 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { Worker } from 'node:worker_threads';
 import { openDatabase } from '../src/db/index.js';
 import { bootstrap } from '../src/services/bootstrap.js';
 import { config } from '../src/config.js';
+import { scoringConfig } from '../src/services/catalog.js';
 import { createApp } from '../src/app.js';
 import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
 import { companyDetail, exportCompaniesCsv, ingestionRejections } from '../src/services/queries.js';
@@ -18,6 +23,83 @@ import { authenticate, setTrustedPrincipal } from '../src/http/security.js';
 import { id, sha256 } from '../src/lib.js';
 
 function setup() { const db = openDatabase(':memory:'); bootstrap(db); return db; }
+
+const approvalWorkerSource = `
+  import { parentPort, workerData } from 'node:worker_threads';
+
+  const { openDatabase } = await import(workerData.dbModule);
+  const { approveScoreCalibration } = await import(workerData.outcomesModule);
+  const { recordAudit } = await import(workerData.auditModule);
+  const db = openDatabase(workerData.databasePath);
+
+  parentPort.postMessage({ type: 'ready' });
+  parentPort.once('message', () => {
+    try {
+      const approved = db.transaction(() => approveScoreCalibration(
+        db, workerData.tenantId, workerData.recommendationId, workerData.actor
+      ));
+      recordAudit(db, workerData.tenantId, {
+        action: 'scoring.version_approved',
+        actor: workerData.actor,
+        resourceType: 'scoring_version',
+        resourceId: approved.id,
+        details: { version: approved.version },
+      });
+      parentPort.postMessage({
+        type: 'result',
+        result: { status: 'fulfilled', recommendationId: workerData.recommendationId, approved },
+      });
+    } catch (error) {
+      parentPort.postMessage({
+        type: 'result',
+        result: {
+          status: 'rejected',
+          recommendationId: workerData.recommendationId,
+          error: { code: error.code, message: error.message },
+        },
+      });
+    } finally {
+      db.close();
+    }
+  });
+`;
+
+function concurrentApprovalWorker(workerData) {
+  const worker = new Worker(new URL(`data:text/javascript,${encodeURIComponent(approvalWorkerSource)}`), {
+    type: 'module',
+    workerData,
+  });
+  let resolveReady;
+  let resolveResult;
+  let reject;
+  const ready = new Promise((resolve, rejectReady) => {
+    resolveReady = resolve;
+    reject = rejectReady;
+  });
+  const result = new Promise((resolve, rejectResult) => {
+    resolveResult = resolve;
+    reject = rejectResult;
+  });
+  worker.on('message', (message) => {
+    if (message.type === 'ready') resolveReady();
+    if (message.type === 'result') resolveResult(message.result);
+  });
+  worker.once('error', (error) => reject(error));
+  return { worker, ready, result };
+}
+
+async function submitCompetingApprovals(workerData) {
+  const contenders = workerData.map(concurrentApprovalWorker);
+  try {
+    await Promise.all(contenders.map(({ ready }) => ready));
+    contenders.forEach(({ worker }) => worker.postMessage({ type: 'approve' }));
+    return await Promise.all(contenders.map(({ result }) => result));
+  } finally {
+    await Promise.all(contenders.map(async ({ worker }) => {
+      if (worker.threadId !== -1) await worker.terminate();
+    }));
+  }
+}
 
 async function startApp(db) {
   const handler = createApp(db, { serveStaticAssets: false });
@@ -146,6 +228,64 @@ test('rejects a stale score approval after another administrator approves a newe
   } finally {
     await app.close();
     db.close();
+  }
+});
+
+test('allows only one concurrent score approval from separate database connections', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hookpoint-score-approval-'));
+  const databasePath = path.join(directory, 'radar.sqlite');
+  const tenantId = 'concurrent_approval_tenant';
+  const now = new Date().toISOString();
+  const proposals = [
+    { id: 'score_version_concurrent_a', version: `${scoringConfig.version}-concurrent-a`, actor: 'admin-a' },
+    { id: 'score_version_concurrent_b', version: `${scoringConfig.version}-concurrent-b`, actor: 'admin-b' },
+  ];
+  const db = openDatabase(databasePath);
+
+  try {
+    bootstrap(db);
+    db.run(`INSERT INTO tenants(id, name, slug, settings_json, created_at, updated_at)
+      VALUES (?, 'Concurrent approval tenant', 'concurrent-approval-tenant', '{}', ?, ?)`, [tenantId, now, now]);
+    for (const proposal of proposals) {
+      db.run(`INSERT INTO scoring_versions(id, tenant_id, version, status, base_version, config_json, evaluation_json, created_at, created_by)
+        VALUES (?, ?, ?, 'proposed', ?, ?, '{}', ?, ?)`, [
+        proposal.id,
+        tenantId,
+        proposal.version,
+        scoringConfig.version,
+        JSON.stringify({ ...scoringConfig, version: proposal.version }),
+        now,
+        proposal.actor,
+      ]);
+    }
+
+    const results = await submitCompetingApprovals(proposals.map((proposal) => ({
+      databasePath,
+      tenantId,
+      recommendationId: proposal.id,
+      actor: proposal.actor,
+      dbModule: new URL('../src/db/index.js', import.meta.url).href,
+      outcomesModule: new URL('../src/services/outcomes.js', import.meta.url).href,
+      auditModule: new URL('../src/services/audit.js', import.meta.url).href,
+    })));
+
+    const approved = results.filter((result) => result.status === 'fulfilled');
+    const rejected = results.filter((result) => result.status === 'rejected');
+    assert.equal(approved.length, 1);
+    assert.equal(rejected.length, 1);
+    assert.ok(['score_recommendation_stale', 'score_recommendation_not_pending'].includes(rejected[0].error.code));
+
+    const versions = db.all(`SELECT id, status FROM scoring_versions WHERE tenant_id=? ORDER BY id`, [tenantId]);
+    assert.equal(versions.filter((version) => version.status === 'approved').length, 1);
+    assert.equal(versions.find((version) => version.id === approved[0].approved.id).status, 'approved');
+
+    const approvalAudits = db.all(`SELECT actor, resource_id FROM audit_events
+      WHERE tenant_id=? AND action='scoring.version_approved' ORDER BY resource_id`, [tenantId]);
+    assert.deepEqual(approvalAudits, [{ actor: approved[0].approved.approved_by, resource_id: approved[0].approved.id }]);
+    assert.equal(approvalAudits.some((audit) => audit.resource_id === rejected[0].recommendationId), false);
+  } finally {
+    db.close();
+    fs.rmSync(directory, { recursive: true, force: true });
   }
 });
 
