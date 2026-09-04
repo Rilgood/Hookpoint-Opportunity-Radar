@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Radar, Target, Activity, Plug, ShieldCheck, Menu, LogOut } from "lucide-react";
+import { Radar, Target, Activity, Plug, ShieldCheck, Menu, LogOut, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useUser, useClerk } from "@clerk/react";
@@ -21,6 +21,7 @@ export function Shell({ children }: ShellProps) {
   const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: Radar },
     { href: "/opportunities", label: "Opportunities", icon: Target },
+    { href: "/insights", label: "Insights", icon: Lightbulb },
     { href: "/signals", label: "Signals", icon: Activity },
     { href: "/sources", label: "Sources", icon: Plug },
     { href: "/quality", label: "Data Quality", icon: ShieldCheck },

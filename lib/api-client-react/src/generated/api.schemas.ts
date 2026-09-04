@@ -857,6 +857,308 @@ export interface ReviewQueueResponse {
   meta: ResponseMeta;
 }
 
+export type InsightStoryEntryKind = typeof InsightStoryEntryKind[keyof typeof InsightStoryEntryKind];
+
+
+export const InsightStoryEntryKind = {
+  signal_detected: 'signal_detected',
+  signal_corroborated: 'signal_corroborated',
+  tier_changed: 'tier_changed',
+  identity_reviewed: 'identity_reviewed',
+  outcome_recorded: 'outcome_recorded',
+  signal_expired: 'signal_expired',
+} as const;
+
+export type InsightStoryEntryWeight = typeof InsightStoryEntryWeight[keyof typeof InsightStoryEntryWeight];
+
+
+export const InsightStoryEntryWeight = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export interface InsightStoryEntry {
+  at: string;
+  kind: InsightStoryEntryKind;
+  title: string;
+  detail: string;
+  signal_key?: string;
+  weight?: InsightStoryEntryWeight;
+}
+
+export interface InsightDriver {
+  signal_key: string;
+  label: string;
+  dimension: string;
+  contribution: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  share_of_positive_contribution: number;
+  source_count: number;
+  evidence_count: number;
+  confidence: number;
+  days_since_last_seen: number;
+  half_life_days: number;
+  recency_factor: number;
+  is_new: boolean;
+  is_corroborated: boolean;
+}
+
+export interface ProjectedScore {
+  score: number;
+  tier: OpportunityTier;
+}
+
+export type CounterEvidenceSeverity = typeof CounterEvidenceSeverity[keyof typeof CounterEvidenceSeverity];
+
+
+export const CounterEvidenceSeverity = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export interface CounterEvidence {
+  code: string;
+  severity: CounterEvidenceSeverity;
+  title: string;
+  detail: string;
+}
+
+export type ChangeSuggestionExpectedEffect = {
+  score_delta: number;
+  projected_tier: OpportunityTier;
+};
+
+export interface ChangeSuggestion {
+  action: string;
+  dimension: string;
+  expected_effect: ChangeSuggestionExpectedEffect;
+}
+
+export interface CohortCounts {
+  labeled: number;
+  qualified: number;
+  negative: number;
+  qualified_rate: number;
+}
+
+export type CompanyInsightsWhyNow = {
+  headline: string;
+  drivers: InsightDriver[];
+  new_since_days: number;
+  new_signal_count: number;
+  corroborated_signal_count: number;
+  active_dimensions: string[];
+};
+
+export type CompanyInsightsActionWindowUrgency = typeof CompanyInsightsActionWindowUrgency[keyof typeof CompanyInsightsActionWindowUrgency];
+
+
+export const CompanyInsightsActionWindowUrgency = {
+  closing: 'closing',
+  stable: 'stable',
+  building: 'building',
+} as const;
+
+export type CompanyInsightsActionWindow = {
+  /** @nullable */
+  strongest_signal_key: string | null;
+  /** @nullable */
+  strongest_signal_label: string | null;
+  /** @nullable */
+  half_life_days: number | null;
+  /** @nullable */
+  days_until_half_strength: number | null;
+  projected_score_in_14_days: ProjectedScore;
+  projected_score_in_30_days: ProjectedScore;
+  urgency: CompanyInsightsActionWindowUrgency;
+};
+
+export type CompanyInsightsComparableAccountsTenantBaseRate = {
+  labeled: number;
+  qualified_rate: number;
+};
+
+export type CompanyInsightsComparableAccounts = {
+  matched_on: string[];
+  labeled: number;
+  qualified: number;
+  negative: number;
+  qualified_rate: number;
+  wilson_95_lower: number;
+  wilson_95_upper: number;
+  /** @nullable */
+  median_days_signal_to_qualified: number | null;
+  sufficient_sample: boolean;
+  tenant_base_rate: CompanyInsightsComparableAccountsTenantBaseRate;
+  note: string;
+};
+
+export interface CompanyInsights {
+  company_id: string;
+  generated_at: string;
+  story: InsightStoryEntry[];
+  why_now: CompanyInsightsWhyNow;
+  action_window: CompanyInsightsActionWindow;
+  counter_evidence: CounterEvidence[];
+  what_would_change: ChangeSuggestion[];
+  comparable_accounts: CompanyInsightsComparableAccounts;
+}
+
+export interface CompanyInsightsResponse {
+  data: CompanyInsights;
+  meta: ResponseMeta;
+}
+
+export type EffectivenessRowVerdict = typeof EffectivenessRowVerdict[keyof typeof EffectivenessRowVerdict];
+
+
+export const EffectivenessRowVerdict = {
+  insufficient: 'insufficient',
+  associated_with_pipeline: 'associated_with_pipeline',
+  activity_without_pipeline: 'activity_without_pipeline',
+  neutral: 'neutral',
+} as const;
+
+export interface EffectivenessRow {
+  signal_key: string;
+  label: string;
+  dimension: string;
+  labeled: number;
+  qualified: number;
+  negative: number;
+  qualified_rate: number;
+  wilson_95_lower: number;
+  wilson_95_upper: number;
+  /** @nullable */
+  lift_vs_base_pp: number | null;
+  activity_count: number;
+  verdict: EffectivenessRowVerdict;
+}
+
+export type SourceEffectivenessRowVerdict = typeof SourceEffectivenessRowVerdict[keyof typeof SourceEffectivenessRowVerdict];
+
+
+export const SourceEffectivenessRowVerdict = {
+  insufficient: 'insufficient',
+  producing_pipeline: 'producing_pipeline',
+  activity_only: 'activity_only',
+  stale: 'stale',
+} as const;
+
+export interface SourceEffectivenessRow {
+  source: string;
+  accounts_touched: number;
+  labeled_accounts: number;
+  qualified_accounts: number;
+  qualified_rate: number;
+  last_observed_at: string;
+  days_since_last_observation: number;
+  rejection_count: number;
+  verdict: SourceEffectivenessRowVerdict;
+}
+
+export interface SegmentInsight {
+  segment: string;
+  labeled: number;
+  qualified: number;
+  negative: number;
+  qualified_rate: number;
+  wilson_95_lower: number;
+  wilson_95_upper: number;
+  sufficient_sample: boolean;
+}
+
+export interface AccountException {
+  company_id: string;
+  name: string;
+  score_at_outcome: number;
+  outcome_type: string;
+  occurred_at: string;
+  /** @nullable */
+  note: string | null;
+  top_signals_at_time: string[];
+}
+
+export interface FocusAccount {
+  company_id: string;
+  name: string;
+  opportunity_score: number;
+  opportunity_tier: OpportunityTier;
+  priority_score: number;
+  reasons: string[];
+  identity_confidence: number;
+}
+
+export type AnalyticsInsightsThresholds = {
+  min_segment_sample: number;
+  min_signal_sample: number;
+};
+
+export type AnalyticsInsightsSegments = {
+  by_industry: SegmentInsight[];
+  by_size_band: SegmentInsight[];
+};
+
+export type AnalyticsInsightsDecayedWithoutActionItem = {
+  company_id: string;
+  name: string;
+  expired_signal_label: string;
+  expired_at: string;
+  opportunity_score: number;
+};
+
+export type AnalyticsInsightsTiming = {
+  /** @nullable */
+  median_days_first_signal_to_qualified: number | null;
+  /** @nullable */
+  p25: number | null;
+  /** @nullable */
+  p75: number | null;
+  sample: number;
+};
+
+export type AnalyticsInsightsLossReasonsItem = {
+  company_id: string;
+  name: string;
+  outcome_type: string;
+  note: string;
+  occurred_at: string;
+};
+
+export type AnalyticsInsightsFocusListPolicy = {
+  new_signal_14d: number;
+  corroborated_positive_signal: number;
+  identity_unverified: number;
+  closing_urgency: number;
+  note: string;
+};
+
+export interface AnalyticsInsights {
+  generated_at: string;
+  thresholds: AnalyticsInsightsThresholds;
+  base_rate: CohortCounts;
+  signal_effectiveness: EffectivenessRow[];
+  source_effectiveness: SourceEffectivenessRow[];
+  segments: AnalyticsInsightsSegments;
+  false_confidence: AccountException[];
+  hidden_wins: AccountException[];
+  decayed_without_action: AnalyticsInsightsDecayedWithoutActionItem[];
+  timing: AnalyticsInsightsTiming;
+  loss_reasons: AnalyticsInsightsLossReasonsItem[];
+  focus_list: FocusAccount[];
+  focus_list_policy: AnalyticsInsightsFocusListPolicy;
+}
+
+export interface AnalyticsInsightsResponse {
+  data: AnalyticsInsights;
+  meta: ResponseMeta;
+}
+
 export type ListRadarCompaniesParams = {
 tier?: OpportunityTier;
 q?: string;

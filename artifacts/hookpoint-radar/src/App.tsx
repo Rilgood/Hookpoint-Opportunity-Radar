@@ -12,6 +12,7 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Opportunities from "@/pages/opportunities";
 import OpportunityDetail from "@/pages/opportunity-detail";
+import Insights from "@/pages/insights";
 import Signals from "@/pages/signals";
 import Sources from "@/pages/sources";
 import Quality from "@/pages/quality";
@@ -208,6 +209,9 @@ function ClerkProviderWithRoutes() {
               </Route>
               <Route path="/opportunities/:id">
                 {() => <ProtectedRoute component={OpportunityDetail} />}
+              </Route>
+              <Route path="/insights">
+                {() => <ProtectedRoute component={Insights} />}
               </Route>
               <Route path="/signals">
                 {() => <ProtectedRoute component={Signals} />}

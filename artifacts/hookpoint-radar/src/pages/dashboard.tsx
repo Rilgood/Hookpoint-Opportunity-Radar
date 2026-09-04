@@ -14,6 +14,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
+import { Link } from "wouter";
 import { DashboardSkeleton } from "@/components/loading-states";
 import { EmptyState } from "@/components/empty-state";
 import { Radar, AlertTriangle, Info, Plug } from "lucide-react";
@@ -31,6 +32,8 @@ import {
   ReviewAlert,
   CalibrationAnalytics,
 } from "@/components/dashboard";
+import { FocusList } from "@/components/insights";
+import { useGetRadarAnalyticsInsights } from "@workspace/api-client-react";
 import { useMemo, useState } from "react";
 
 const SAMPLE_OBSERVATIONS = {
@@ -143,6 +146,7 @@ export default function Dashboard() {
   const { data: qualityRes, isLoading: isQualityLoading } = useGetRadarDataQuality();
   const { data: reviewRes, isLoading: isReviewLoading } = useListRadarReviewQueue({ limit: 5 });
   const { data: connectorsRes, isLoading: isConnectorsLoading } = useListRadarConnectors();
+  const { data: analyticsRes, isLoading: isAnalyticsLoading } = useGetRadarAnalyticsInsights();
 
   const ingestMutation = useIngestRadarObservations({
     mutation: {
@@ -312,6 +316,21 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 flex flex-col gap-6">
+          {analyticsRes?.data && (
+            <div className="relative">
+              <FocusList
+                focusList={analyticsRes.data.focus_list.slice(0, 5)}
+                policy={analyticsRes.data.focus_list_policy}
+              />
+              <div className="absolute top-4 right-4">
+                 <Button variant="outline" size="sm" asChild className="h-8 text-xs font-semibold rounded-lg bg-background/50 backdrop-blur-sm">
+                   <Link href="/insights">
+                     See all insights
+                   </Link>
+                 </Button>
+              </div>
+            </div>
+          )}
           <PriorityAccounts companies={companies} isLoading={isCompaniesLoading} />
         </div>
         <div className="xl:col-span-1 flex flex-col gap-6">

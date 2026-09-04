@@ -7,11 +7,19 @@ import {
   useSeparateRadarCompanyIdentity,
   useListRadarCompanies,
   useRecordRadarOutcome,
+  useGetRadarCompanyInsights,
   OutcomeInputOutcomeType,
   OutcomeInput,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetRadarCompanyQueryKey, getGetRadarDashboardQueryKey, getListRadarCompaniesQueryKey, getGetRadarOutcomeAnalyticsQueryKey } from "@workspace/api-client-react";
+import {
+  getGetRadarCompanyQueryKey,
+  getGetRadarDashboardQueryKey,
+  getListRadarCompaniesQueryKey,
+  getGetRadarOutcomeAnalyticsQueryKey,
+  getGetRadarCompanyInsightsQueryKey,
+  getGetRadarAnalyticsInsightsQueryKey
+} from "@workspace/api-client-react";
 import {
   Card,
   CardContent,
@@ -47,6 +55,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { OutcomeDialog } from "@/components/outcome-dialog";
+import { CompanyInsightsSection } from "@/components/insights";
 
 type RecommendationPanelsProps = {
   recommendation: {
@@ -241,6 +250,10 @@ export default function OpportunityDetail() {
     },
   });
 
+  const { data: insightsResponse, isLoading: isInsightsLoading } = useGetRadarCompanyInsights(id || "", {
+    query: { enabled: !!id, queryKey: getGetRadarCompanyInsightsQueryKey(id || "") }
+  });
+
   const outcomeMutation = useRecordRadarOutcome({
     mutation: {
       onSuccess: () => {
@@ -262,6 +275,12 @@ export default function OpportunityDetail() {
             }),
             queryClient.invalidateQueries({
               queryKey: getGetRadarOutcomeAnalyticsQueryKey(),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: getGetRadarCompanyInsightsQueryKey(id),
+            }),
+            queryClient.invalidateQueries({
+              queryKey: getGetRadarAnalyticsInsightsQueryKey(),
             })
           ]);
         }
@@ -281,6 +300,7 @@ export default function OpportunityDetail() {
       queryClient.invalidateQueries({ queryKey: getGetRadarCompanyQueryKey(id) }),
       queryClient.invalidateQueries({ queryKey: getListRadarCompaniesQueryKey() }),
       queryClient.invalidateQueries({ queryKey: ["/api/v1/review-queue"] }),
+      queryClient.invalidateQueries({ queryKey: getGetRadarCompanyInsightsQueryKey(id) }),
     ]);
   };
   const identitySuccess = (message: string) => {
@@ -565,6 +585,19 @@ export default function OpportunityDetail() {
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Right Column - Timeline & Insights */}
+        <div className="space-y-6 lg:col-span-2">
+
+          {isInsightsLoading ? (
+             <div className="space-y-4 mb-6">
+                <Skeleton className="h-12 w-1/3" />
+                <Skeleton className="h-48 w-full" />
+             </div>
+          ) : insightsResponse?.data ? (
+             <CompanyInsightsSection insights={insightsResponse.data} currentScore={company.opportunity_score} currentTier={company.opportunity_tier} />
+          ) : null}
 
           <RecommendationPanels
             recommendation={recommendation ?? null}

@@ -256,6 +256,105 @@ export const GetRadarCompanyResponse = zod.object({
 
 
 /**
+ * @summary Get an evidence-first account insight packet
+ */
+export const GetRadarCompanyInsightsParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const getRadarCompanyInsightsResponseDataWhyNowDriversItemShareOfPositiveContributionMin = 0;
+export const getRadarCompanyInsightsResponseDataWhyNowDriversItemShareOfPositiveContributionMax = 100;
+
+
+
+export const GetRadarCompanyInsightsResponse = zod.object({
+  "data": zod.object({
+  "company_id": zod.string(),
+  "generated_at": zod.coerce.date(),
+  "story": zod.array(zod.object({
+  "at": zod.coerce.date(),
+  "kind": zod.enum(['signal_detected', 'signal_corroborated', 'tier_changed', 'identity_reviewed', 'outcome_recorded', 'signal_expired']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "signal_key": zod.string().optional(),
+  "weight": zod.enum(['high', 'medium', 'low']).optional()
+})),
+  "why_now": zod.object({
+  "headline": zod.string(),
+  "drivers": zod.array(zod.object({
+  "signal_key": zod.string(),
+  "label": zod.string(),
+  "dimension": zod.string(),
+  "contribution": zod.number(),
+  "share_of_positive_contribution": zod.number().min(getRadarCompanyInsightsResponseDataWhyNowDriversItemShareOfPositiveContributionMin).max(getRadarCompanyInsightsResponseDataWhyNowDriversItemShareOfPositiveContributionMax),
+  "source_count": zod.number(),
+  "evidence_count": zod.number(),
+  "confidence": zod.number(),
+  "days_since_last_seen": zod.number(),
+  "half_life_days": zod.number(),
+  "recency_factor": zod.number(),
+  "is_new": zod.boolean(),
+  "is_corroborated": zod.boolean()
+})),
+  "new_since_days": zod.number(),
+  "new_signal_count": zod.number(),
+  "corroborated_signal_count": zod.number(),
+  "active_dimensions": zod.array(zod.string())
+}),
+  "action_window": zod.object({
+  "strongest_signal_key": zod.string().nullable(),
+  "strongest_signal_label": zod.string().nullable(),
+  "half_life_days": zod.number().nullable(),
+  "days_until_half_strength": zod.number().nullable(),
+  "projected_score_in_14_days": zod.object({
+  "score": zod.number(),
+  "tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed'])
+}),
+  "projected_score_in_30_days": zod.object({
+  "score": zod.number(),
+  "tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed'])
+}),
+  "urgency": zod.enum(['closing', 'stable', 'building'])
+}),
+  "counter_evidence": zod.array(zod.object({
+  "code": zod.string(),
+  "severity": zod.enum(['high', 'medium', 'low']),
+  "title": zod.string(),
+  "detail": zod.string()
+})),
+  "what_would_change": zod.array(zod.object({
+  "action": zod.string(),
+  "dimension": zod.string(),
+  "expected_effect": zod.object({
+  "score_delta": zod.number(),
+  "projected_tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed'])
+})
+})),
+  "comparable_accounts": zod.object({
+  "matched_on": zod.array(zod.string()),
+  "labeled": zod.number(),
+  "qualified": zod.number(),
+  "negative": zod.number(),
+  "qualified_rate": zod.number(),
+  "wilson_95_lower": zod.number(),
+  "wilson_95_upper": zod.number(),
+  "median_days_signal_to_qualified": zod.number().nullable(),
+  "sufficient_sample": zod.boolean(),
+  "tenant_base_rate": zod.object({
+  "labeled": zod.number(),
+  "qualified_rate": zod.number()
+}),
+  "note": zod.string()
+})
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
  * @summary Record a human-reviewed sales outcome
  */
 export const RecordRadarOutcomeParams = zod.object({
@@ -454,6 +553,131 @@ export const GetRadarOutcomeAnalyticsResponse = zod.object({
   "wilson_95_upper": zod.number(),
   "qualified_rate_lift_vs_cold": zod.number().nullable()
 })).min(getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMin).max(getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMax)
+})
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * @summary Get observational portfolio insights
+ */
+export const GetRadarAnalyticsInsightsResponse = zod.object({
+  "data": zod.object({
+  "generated_at": zod.coerce.date(),
+  "thresholds": zod.object({
+  "min_segment_sample": zod.number(),
+  "min_signal_sample": zod.number()
+}),
+  "base_rate": zod.object({
+  "labeled": zod.number(),
+  "qualified": zod.number(),
+  "negative": zod.number(),
+  "qualified_rate": zod.number()
+}),
+  "signal_effectiveness": zod.array(zod.object({
+  "signal_key": zod.string(),
+  "label": zod.string(),
+  "dimension": zod.string(),
+  "labeled": zod.number(),
+  "qualified": zod.number(),
+  "negative": zod.number(),
+  "qualified_rate": zod.number(),
+  "wilson_95_lower": zod.number(),
+  "wilson_95_upper": zod.number(),
+  "lift_vs_base_pp": zod.number().nullable(),
+  "activity_count": zod.number(),
+  "verdict": zod.enum(['insufficient', 'associated_with_pipeline', 'activity_without_pipeline', 'neutral'])
+})),
+  "source_effectiveness": zod.array(zod.object({
+  "source": zod.string(),
+  "accounts_touched": zod.number(),
+  "labeled_accounts": zod.number(),
+  "qualified_accounts": zod.number(),
+  "qualified_rate": zod.number(),
+  "last_observed_at": zod.coerce.date(),
+  "days_since_last_observation": zod.number(),
+  "rejection_count": zod.number(),
+  "verdict": zod.enum(['insufficient', 'producing_pipeline', 'activity_only', 'stale'])
+})),
+  "segments": zod.object({
+  "by_industry": zod.array(zod.object({
+  "segment": zod.string(),
+  "labeled": zod.number(),
+  "qualified": zod.number(),
+  "negative": zod.number(),
+  "qualified_rate": zod.number(),
+  "wilson_95_lower": zod.number(),
+  "wilson_95_upper": zod.number(),
+  "sufficient_sample": zod.boolean()
+})),
+  "by_size_band": zod.array(zod.object({
+  "segment": zod.string(),
+  "labeled": zod.number(),
+  "qualified": zod.number(),
+  "negative": zod.number(),
+  "qualified_rate": zod.number(),
+  "wilson_95_lower": zod.number(),
+  "wilson_95_upper": zod.number(),
+  "sufficient_sample": zod.boolean()
+}))
+}),
+  "false_confidence": zod.array(zod.object({
+  "company_id": zod.string(),
+  "name": zod.string(),
+  "score_at_outcome": zod.number(),
+  "outcome_type": zod.string(),
+  "occurred_at": zod.coerce.date(),
+  "note": zod.string().nullable(),
+  "top_signals_at_time": zod.array(zod.string())
+})),
+  "hidden_wins": zod.array(zod.object({
+  "company_id": zod.string(),
+  "name": zod.string(),
+  "score_at_outcome": zod.number(),
+  "outcome_type": zod.string(),
+  "occurred_at": zod.coerce.date(),
+  "note": zod.string().nullable(),
+  "top_signals_at_time": zod.array(zod.string())
+})),
+  "decayed_without_action": zod.array(zod.object({
+  "company_id": zod.string(),
+  "name": zod.string(),
+  "expired_signal_label": zod.string(),
+  "expired_at": zod.coerce.date(),
+  "opportunity_score": zod.number()
+})),
+  "timing": zod.object({
+  "median_days_first_signal_to_qualified": zod.number().nullable(),
+  "p25": zod.number().nullable(),
+  "p75": zod.number().nullable(),
+  "sample": zod.number()
+}),
+  "loss_reasons": zod.array(zod.object({
+  "company_id": zod.string(),
+  "name": zod.string(),
+  "outcome_type": zod.string(),
+  "note": zod.string(),
+  "occurred_at": zod.coerce.date()
+})),
+  "focus_list": zod.array(zod.object({
+  "company_id": zod.string(),
+  "name": zod.string(),
+  "opportunity_score": zod.number(),
+  "opportunity_tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']),
+  "priority_score": zod.number(),
+  "reasons": zod.array(zod.string()),
+  "identity_confidence": zod.number()
+})),
+  "focus_list_policy": zod.object({
+  "new_signal_14d": zod.number(),
+  "corroborated_positive_signal": zod.number(),
+  "identity_unverified": zod.number(),
+  "closing_urgency": zod.number(),
+  "note": zod.string()
 })
 }),
   "meta": zod.object({

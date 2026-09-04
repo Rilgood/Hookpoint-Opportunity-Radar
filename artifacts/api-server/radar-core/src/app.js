@@ -16,6 +16,7 @@ import { readBody, sendJson, sendText, serveStatic } from './http/io.js';
 import { authenticate, enforceRateLimit, requireScope, securityHeaders } from './http/security.js';
 import { observationTypes } from './observation-contract.js';
 import { approveScoreCalibration, evaluateScoreCalibration, outcomeAnalytics, recordOutcome } from './services/outcomes.js';
+import { analyticsInsights, companyInsights } from './services/insights.js';
 
 export function createApp(db, { serveStaticAssets = true } = {}) {
   bootstrap(db);
@@ -40,6 +41,7 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
   router.get('/api/v1/dashboard', async ({ auth }) => dashboardSummary(db, auth.tenantId));
   router.get('/api/v1/companies', async ({ auth, query }) => listCompanies(db, auth.tenantId, query));
   router.get('/api/v1/companies/:id', async ({ auth, params }) => companyDetail(db, auth.tenantId, params.id));
+  router.get('/api/v1/companies/:id/insights', async ({ auth, params }) => companyInsights(db, auth.tenantId, params.id));
   router.post('/api/v1/companies/:id/identity/confirm', async ({ auth, params, body, requestId }) => {
     requireScope(auth, 'write');
     const company = db.transaction(() => confirmIdentity(db, auth.tenantId, params.id, body, auth.actor));
@@ -158,6 +160,10 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
   router.get('/api/v1/analytics/outcomes', async ({ auth }) => {
     requireScope(auth, 'read');
     return outcomeAnalytics(db, auth.tenantId);
+  });
+  router.get('/api/v1/analytics/insights', async ({ auth }) => {
+    requireScope(auth, 'read');
+    return analyticsInsights(db, auth.tenantId);
   });
   router.post('/api/v1/analytics/outcomes/evaluate', async ({ auth, requestId }) => {
     requireScope(auth, 'admin');

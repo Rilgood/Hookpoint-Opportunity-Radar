@@ -50,37 +50,12 @@ export function rescoreCompany(db, tenantId, companyId, asOf = nowIso()) {
   const company = db.get('SELECT * FROM companies WHERE tenant_id = ? AND id = ?', [tenantId, companyId]);
   if (!company) return null;
   const signals = db.all(`SELECT * FROM signals WHERE tenant_id = ? AND company_id = ? AND status = 'active'`, [tenantId, companyId]);
-  const dimensions = { need: 0, intent: 0, timing: 0, risk: 0 };
-
-  for (const signal of signals) {
-    const definition = signalByKey.get(signal.signal_key);
-    const halfLife = definition?.halfLifeDays || 30;
-    const recency = Math.pow(0.5, daysBetween(asOf, signal.last_seen_at) / halfLife);
-    const corroboration = Math.min(scoringConfig.corroboration.maximum,
-      1 + Math.max(0, signal.source_count - 1) * scoringConfig.corroboration.sourceLift
-      + Math.min(scoringConfig.corroboration.evidenceLiftLimit, Math.max(0, signal.evidence_count - 1)) * scoringConfig.corroboration.evidenceLift);
-    const contribution = signal.base_weight * signal.strength * signal.confidence * recency * corroboration;
-    db.run('UPDATE signals SET contribution = ?, updated_at = ? WHERE id = ?', [round(contribution, 2), asOf, signal.id]);
-    dimensions[signal.dimension] = (dimensions[signal.dimension] || 0) + contribution;
+  const buyer = db.get('SELECT COUNT(*) count FROM people WHERE tenant_id=? AND company_id=? AND is_decision_maker=1', [tenantId, company.id]);
+  const computed = computeScore({ company, signals, buyerCount: buyer?.count || 0, scoringConfig, asOf });
+  const { fit, need, intent, timing, risk, score, tier, commercialTier, identityReview, breadthBonus, dimensionBonus, raw } = computed;
+  for (const signal of computed.signals) {
+    db.run('UPDATE signals SET contribution = ?, updated_at = ? WHERE id = ?', [round(signal.contribution, 2), asOf, signal.id]);
   }
-
-  const fit = calculateFit(db, tenantId, company);
-  const need = saturate(dimensions.need);
-  const intent = saturate(dimensions.intent);
-  const timing = saturate(dimensions.timing);
-  const risk = saturate(dimensions.risk);
-  const positiveCount = signals.filter((signal) => signal.polarity > 0).length;
-  const activeDimensions = [need, intent, timing].filter((value) => value >= scoringConfig.activeDimensionThreshold).length;
-  const breadthBonus = Math.min(scoringConfig.breadthBonusMaximum, Math.max(0, positiveCount - 1) * scoringConfig.breadthBonusPerSignal);
-  const dimensionBonus = Math.max(0, activeDimensions - 1) * scoringConfig.dimensionBreadthBonus;
-  const weights = scoringConfig.dimensionWeights;
-  const raw = fit * weights.fit + need * weights.need + intent * weights.intent + timing * weights.timing + breadthBonus + dimensionBonus - risk * scoringConfig.riskPenalty;
-  const score = round(clamp(raw), 1);
-  const thresholds = scoringConfig.tierThresholds;
-  const commercialTier = score >= thresholds.hot ? 'hot' : score >= thresholds.warm ? 'warm' : score >= thresholds.watch ? 'watch' : 'cold';
-  const identityReview = Number(company.identity_confidence || 0) < 0.8;
-  const tier = risk >= scoringConfig.riskSuppressionThreshold ? 'suppressed'
-    : identityReview && ['hot','warm'].includes(commercialTier) ? 'watch' : commercialTier;
   const monitor = tier === 'hot' ? 'hot' : tier === 'warm' ? 'watchlist' : tier === 'watch' ? 'qualified' : 'universe';
   const refreshDays = scoringConfig.refreshDays[monitor];
   const previousTier = company.opportunity_tier;
@@ -102,6 +77,42 @@ export function rescoreCompany(db, tenantId, companyId, asOf = nowIso()) {
   }
   createRecommendation(db, tenantId, companyId, tier, score);
   return db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, companyId]);
+}
+
+export function computeScore({ company, signals, buyerCount = 0, scoringConfig, asOf = nowIso() }) {
+  const dimensions = { need: 0, intent: 0, timing: 0, risk: 0 };
+  const scoredSignals = signals
+    .filter((signal) => signal.status === undefined || signal.status === 'active')
+    .filter((signal) => !signal.expires_at || new Date(signal.expires_at).getTime() >= new Date(asOf).getTime())
+    .map((signal) => {
+      const definition = signalByKey.get(signal.signal_key);
+      const halfLife = definition?.halfLifeDays || 30;
+      const recency = Math.pow(0.5, daysBetween(asOf, signal.last_seen_at) / halfLife);
+      const corroboration = Math.min(scoringConfig.corroboration.maximum,
+        1 + Math.max(0, signal.source_count - 1) * scoringConfig.corroboration.sourceLift
+        + Math.min(scoringConfig.corroboration.evidenceLiftLimit, Math.max(0, signal.evidence_count - 1)) * scoringConfig.corroboration.evidenceLift);
+      const contribution = signal.base_weight * signal.strength * signal.confidence * recency * corroboration;
+      dimensions[signal.dimension] = (dimensions[signal.dimension] || 0) + contribution;
+      return { ...signal, contribution, recency_factor: recency, half_life_days: halfLife };
+    });
+  const fit = calculateFitFromInputs(company, buyerCount);
+  const need = saturate(dimensions.need);
+  const intent = saturate(dimensions.intent);
+  const timing = saturate(dimensions.timing);
+  const risk = saturate(dimensions.risk);
+  const positiveCount = scoredSignals.filter((signal) => signal.polarity > 0).length;
+  const activeDimensions = [need, intent, timing].filter((value) => value >= scoringConfig.activeDimensionThreshold).length;
+  const breadthBonus = Math.min(scoringConfig.breadthBonusMaximum, Math.max(0, positiveCount - 1) * scoringConfig.breadthBonusPerSignal);
+  const dimensionBonus = Math.max(0, activeDimensions - 1) * scoringConfig.dimensionBreadthBonus;
+  const weights = scoringConfig.dimensionWeights;
+  const raw = fit * weights.fit + need * weights.need + intent * weights.intent + timing * weights.timing + breadthBonus + dimensionBonus - risk * scoringConfig.riskPenalty;
+  const score = round(clamp(raw), 1);
+  const thresholds = scoringConfig.tierThresholds;
+  const commercialTier = score >= thresholds.hot ? 'hot' : score >= thresholds.warm ? 'warm' : score >= thresholds.watch ? 'watch' : 'cold';
+  const identityReview = Number(company.identity_confidence || 0) < 0.8;
+  const tier = risk >= scoringConfig.riskSuppressionThreshold ? 'suppressed'
+    : identityReview && ['hot','warm'].includes(commercialTier) ? 'watch' : commercialTier;
+  return { fit, need, intent, timing, risk, score, tier, commercialTier, identityReview, breadthBonus, dimensionBonus, raw, dimensions, signals: scoredSignals };
 }
 
 export function rescoreAll(db, tenantId, limit = 5_000) {
@@ -204,6 +215,11 @@ function refreshSignalEvidence(db, signalId, definition, asOf) {
 }
 
 function calculateFit(db, tenantId, company) {
+  const buyer = db.get('SELECT COUNT(*) count FROM people WHERE tenant_id=? AND company_id=? AND is_decision_maker=1', [tenantId, company.id]);
+  return calculateFitFromInputs(company, buyer?.count || 0);
+}
+
+export function calculateFitFromInputs(company, buyerCount = 0) {
   let score = 30;
   if (company.domain) score += 10;
   if (company.industry && company.industry !== 'Unknown') score += 10;
@@ -213,8 +229,7 @@ function calculateFit(db, tenantId, company) {
   if (company.annual_revenue >= 1_000_000) score += 8;
   if (company.annual_revenue >= 10_000_000) score += 5;
   if (company.city || company.state) score += 4;
-  const buyer = db.get('SELECT COUNT(*) count FROM people WHERE tenant_id=? AND company_id=? AND is_decision_maker=1', [tenantId, company.id]);
-  if (buyer?.count) score += 13;
+  if (buyerCount) score += 13;
   return round(clamp(score), 1);
 }
 

@@ -20,7 +20,9 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AnalyticsInsightsResponse,
   CompanyDetailResponse,
+  CompanyInsightsResponse,
   CompanyListResponse,
   CompanyResponse,
   ConnectorResponse,
@@ -393,6 +395,83 @@ export function useGetRadarCompany<TData = Awaited<ReturnType<typeof getRadarCom
 
 
 
+export const getGetRadarCompanyInsightsUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/companies/${id}/insights`
+}
+
+/**
+ * @summary Get an evidence-first account insight packet
+ */
+export const getRadarCompanyInsights = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<CompanyInsightsResponse> => {
+
+  return customFetch<CompanyInsightsResponse>(getGetRadarCompanyInsightsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRadarCompanyInsightsQueryKey = (id: string,) => {
+    return [
+    `/api/v1/companies/${id}/insights`
+    ] as const;
+    }
+
+
+export const getGetRadarCompanyInsightsQueryOptions = <TData = Awaited<ReturnType<typeof getRadarCompanyInsights>>, TError = ErrorType<void>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarCompanyInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRadarCompanyInsightsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRadarCompanyInsights>>> = ({ signal }) => getRadarCompanyInsights(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRadarCompanyInsights>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRadarCompanyInsightsQueryResult = NonNullable<Awaited<ReturnType<typeof getRadarCompanyInsights>>>
+export type GetRadarCompanyInsightsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get an evidence-first account insight packet
+ */
+
+export function useGetRadarCompanyInsights<TData = Awaited<ReturnType<typeof getRadarCompanyInsights>>, TError = ErrorType<void>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarCompanyInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRadarCompanyInsightsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getRecordRadarOutcomeUrl = (id: string,) => {
 
 
@@ -748,6 +827,83 @@ export function useGetRadarOutcomeAnalytics<TData = Awaited<ReturnType<typeof ge
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetRadarOutcomeAnalyticsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetRadarAnalyticsInsightsUrl = () => {
+
+
+
+
+  return `/api/v1/analytics/insights`
+}
+
+/**
+ * @summary Get observational portfolio insights
+ */
+export const getRadarAnalyticsInsights = async ( options?: Parameters<typeof customFetch>[1]): Promise<AnalyticsInsightsResponse> => {
+
+  return customFetch<AnalyticsInsightsResponse>(getGetRadarAnalyticsInsightsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRadarAnalyticsInsightsQueryKey = () => {
+    return [
+    `/api/v1/analytics/insights`
+    ] as const;
+    }
+
+
+export const getGetRadarAnalyticsInsightsQueryOptions = <TData = Awaited<ReturnType<typeof getRadarAnalyticsInsights>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarAnalyticsInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRadarAnalyticsInsightsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRadarAnalyticsInsights>>> = ({ signal }) => getRadarAnalyticsInsights({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRadarAnalyticsInsights>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRadarAnalyticsInsightsQueryResult = NonNullable<Awaited<ReturnType<typeof getRadarAnalyticsInsights>>>
+export type GetRadarAnalyticsInsightsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get observational portfolio insights
+ */
+
+export function useGetRadarAnalyticsInsights<TData = Awaited<ReturnType<typeof getRadarAnalyticsInsights>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarAnalyticsInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRadarAnalyticsInsightsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -79,6 +79,19 @@ paths:
       responses:
         "200": { description: Company data deleted }
         "404": { $ref: "#/components/responses/Error" }
+  /api/v1/companies/{id}/insights:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+    get:
+      operationId: getRadarCompanyInsights
+      summary: Get an evidence-first account insight packet
+      responses:
+        "200":
+          description: Account insights derived from tenant evidence
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompanyInsightsResponse" }
+        "404": { $ref: "#/components/responses/Error" }
   /api/v1/companies/{id}/outcomes:
     parameters:
       - { in: path, name: id, required: true, schema: { type: string } }
@@ -250,6 +263,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/OutcomeAnalyticsResponse" }
+  /api/v1/analytics/insights:
+    get:
+      operationId: getRadarAnalyticsInsights
+      summary: Get observational portfolio insights
+      responses:
+        "200":
+          description: Tenant-scoped observational insights
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalyticsInsightsResponse" }
   /api/v1/data-quality:
     get:
       summary: Observation, rejection, identity, source-freshness and connector health
@@ -311,6 +334,144 @@ components:
                 properties:
                   request_id: { type: string }
   schemas:
+    CompanyInsightsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: "#/components/schemas/CompanyInsights" }
+        meta: { type: object }
+    CompanyInsights:
+      type: object
+      required: [company_id, generated_at, story, why_now, action_window, counter_evidence, what_would_change, comparable_accounts]
+      properties:
+        company_id: { type: string }
+        generated_at: { type: string, format: date-time }
+        story:
+          type: array
+          items:
+            type: object
+            required: [at, kind, title, detail]
+            properties:
+              at: { type: string, format: date-time }
+              kind: { type: string, enum: [signal_detected, signal_corroborated, tier_changed, identity_reviewed, outcome_recorded, signal_expired] }
+              title: { type: string }
+              detail: { type: string }
+              signal_key: { type: string }
+              weight: { type: string, enum: [high, medium, low] }
+        why_now:
+          type: object
+          required: [headline, drivers, new_since_days, new_signal_count, corroborated_signal_count, active_dimensions]
+          properties:
+            headline: { type: string }
+            drivers:
+              type: array
+              items:
+                type: object
+                required: [signal_key, label, dimension, contribution, share_of_positive_contribution, source_count, evidence_count, confidence, days_since_last_seen, half_life_days, recency_factor, is_new, is_corroborated]
+                properties:
+                  signal_key: { type: string }
+                  label: { type: string }
+                  dimension: { type: string }
+                  contribution: { type: number }
+                  share_of_positive_contribution: { type: number }
+                  source_count: { type: number }
+                  evidence_count: { type: number }
+                  confidence: { type: number }
+                  days_since_last_seen: { type: number }
+                  half_life_days: { type: number }
+                  recency_factor: { type: number }
+                  is_new: { type: boolean }
+                  is_corroborated: { type: boolean }
+            new_since_days: { type: number }
+            new_signal_count: { type: number }
+            corroborated_signal_count: { type: number }
+            active_dimensions: { type: array, items: { type: string } }
+        action_window:
+          type: object
+          required: [strongest_signal_key, strongest_signal_label, half_life_days, days_until_half_strength, projected_score_in_14_days, projected_score_in_30_days, urgency]
+          properties:
+            strongest_signal_key: { type: [string, "null"] }
+            strongest_signal_label: { type: [string, "null"] }
+            half_life_days: { type: [number, "null"] }
+            days_until_half_strength: { type: [number, "null"] }
+            projected_score_in_14_days: { $ref: "#/components/schemas/ProjectedInsightScore" }
+            projected_score_in_30_days: { $ref: "#/components/schemas/ProjectedInsightScore" }
+            urgency: { type: string, enum: [closing, stable, building] }
+        counter_evidence:
+          type: array
+          items: { $ref: "#/components/schemas/CounterEvidence" }
+        what_would_change:
+          type: array
+          items: { $ref: "#/components/schemas/ChangeSuggestion" }
+        comparable_accounts: { $ref: "#/components/schemas/ComparableAccounts" }
+    ProjectedInsightScore:
+      type: object
+      required: [score, tier]
+      properties:
+        score: { type: number }
+        tier: { type: string, enum: [hot, warm, watch, cold, suppressed] }
+    CounterEvidence:
+      type: object
+      required: [code, severity, title, detail]
+      properties:
+        code: { type: string }
+        severity: { type: string, enum: [high, medium, low] }
+        title: { type: string }
+        detail: { type: string }
+    ChangeSuggestion:
+      type: object
+      required: [action, expected_effect, dimension]
+      properties:
+        action: { type: string }
+        dimension: { type: string }
+        expected_effect:
+          type: object
+          required: [score_delta, projected_tier]
+          properties:
+            score_delta: { type: number }
+            projected_tier: { type: string, enum: [hot, warm, watch, cold, suppressed] }
+    ComparableAccounts:
+      type: object
+      required: [matched_on, labeled, qualified, negative, qualified_rate, wilson_95_lower, wilson_95_upper, median_days_signal_to_qualified, sufficient_sample, tenant_base_rate, note]
+      properties:
+        matched_on: { type: array, items: { type: string } }
+        labeled: { type: number }
+        qualified: { type: number }
+        negative: { type: number }
+        qualified_rate: { type: number }
+        wilson_95_lower: { type: number }
+        wilson_95_upper: { type: number }
+        median_days_signal_to_qualified: { type: [number, "null"] }
+        sufficient_sample: { type: boolean }
+        tenant_base_rate:
+          type: object
+          required: [labeled, qualified_rate]
+          properties:
+            labeled: { type: number }
+            qualified_rate: { type: number }
+        note: { type: string }
+    AnalyticsInsightsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [generated_at, thresholds, base_rate, signal_effectiveness, source_effectiveness, segments, false_confidence, hidden_wins, decayed_without_action, timing, loss_reasons, focus_list, focus_list_policy]
+          properties:
+            generated_at: { type: string, format: date-time }
+            thresholds: { type: object }
+            base_rate: { type: object }
+            signal_effectiveness: { type: array, items: { type: object } }
+            source_effectiveness: { type: array, items: { type: object } }
+            segments: { type: object }
+            false_confidence: { type: array, items: { type: object } }
+            hidden_wins: { type: array, items: { type: object } }
+            decayed_without_action: { type: array, items: { type: object } }
+            timing: { type: object }
+            loss_reasons: { type: array, items: { type: object } }
+            focus_list: { type: array, items: { type: object } }
+            focus_list_policy: { type: object }
+        meta: { type: object }
     Envelope:
       type: object
       properties:

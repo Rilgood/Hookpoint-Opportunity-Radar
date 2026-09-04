@@ -1,3 +1,4 @@
 - [Orval and Zod compatibility](orval-zod-compatibility.md) — Orval v8 can emit Zod 4-only root helpers while the workspace validator package still resolves Zod 3.
 - [Pilot workspace isolation](pilot-workspace-isolation.md) — start with one private workspace per user; shared access requires explicit memberships and roles.
 - [Workspace test tooling](workspace-test-tooling.md) — the managed package installer cannot add shared developer tools to a pnpm workspace root.
+- [Outcome cohort label time](outcome-cohort-label-time.md) — cohort/source/timing analytics must only use evidence observed before the earliest label; exclude, never zero.
