@@ -10,6 +10,8 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/hookpoint-radar run test` — component/integration suite (Vitest, no live session)
+- `pnpm --filter @workspace/hookpoint-radar run test:e2e` — authenticated browser smoke journey (Playwright). Needs the `API Server` and `web` workflows running and `CLERK_SECRET_KEY`; it signs in a dedicated Clerk dev user (`e2e-decision-smoke@example.com`), resets that user's private workspace in the dev SQLite file, then confirms an identity, provokes a stale-approval rejection, and approves a score version. Spec and helpers live in `artifacts/hookpoint-radar/e2e/`; traces/screenshots go to `.e2e-artifacts/` (must stay outside the Vite root or the dev server reload-loops).
 
 ## Stack
 
