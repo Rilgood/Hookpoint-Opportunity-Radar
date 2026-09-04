@@ -1,10 +1,13 @@
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+// @ts-expect-error The radar core is plain JavaScript without TS declarations.
+import { openDatabase } from "../../api-server/radar-core/src/db/index.js";
 
 /**
- * Direct access to the SQLite database behind the running API server.
+ * Direct access to the database behind the running API server, through the
+ * radar core's own synchronous database boundary so the journey works whether
+ * the server is on managed Postgres (DATABASE_URL, the default in this
+ * workspace and in production) or on the embedded SQLite file.
  *
  * The browser journey only needs this for two things the product deliberately
  * does not expose over HTTP: resetting the dedicated e2e workspace so the run
@@ -12,22 +15,41 @@ import { DatabaseSync } from "node:sqlite";
  * calibration requires. Everything the operator does is driven through the UI.
  */
 
+/** The subset of the radar core database boundary the journey uses. */
+export interface RadarDatabase {
+  dialect: "sqlite" | "postgres";
+  run(sql: string, params?: unknown[]): { changes: number };
+  get<T = Record<string, unknown>>(sql: string, params?: unknown[]): T | undefined;
+  all<T = Record<string, unknown>>(sql: string, params?: unknown[]): T[];
+  exec(sql: string): void;
+  transaction<T>(fn: () => T): T;
+  close(): void;
+}
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultDatabasePath = path.resolve(here, "../../api-server/data/hookpoint-radar.sqlite");
 
-export function openRadarDatabase(): DatabaseSync {
-  const databasePath = process.env.E2E_DATABASE_PATH
-    ? path.resolve(process.env.E2E_DATABASE_PATH)
-    : defaultDatabasePath;
-  if (!fs.existsSync(databasePath)) {
+/**
+ * Resolution order mirrors the API server: E2E_DATABASE_URL, then the
+ * workspace DATABASE_URL, then the SQLite file (E2E_DATABASE_PATH or the
+ * default path). The schema is verified, never modified, from the test side.
+ */
+export function openRadarDatabase(): RadarDatabase {
+  const target = process.env.E2E_DATABASE_URL
+    || process.env.DATABASE_URL
+    || (process.env.E2E_DATABASE_PATH ? path.resolve(process.env.E2E_DATABASE_PATH) : defaultDatabasePath);
+  const db = openDatabase(target, { manageSchema: false }) as RadarDatabase & { schemaStatus: { ok: boolean; missing: string[] } };
+  if (!db.schemaStatus.ok) {
+    db.close();
     throw new Error(
-      `Radar database not found at ${databasePath}. Start the API Server workflow first or set E2E_DATABASE_PATH.`,
+      `Radar database at ${describeTarget(target)} is missing ${db.schemaStatus.missing.slice(0, 3).join(", ")}. Start the API Server workflow first so it applies the schema.`,
     );
   }
-  const db = new DatabaseSync(databasePath);
-  db.exec("PRAGMA foreign_keys = ON");
-  db.exec("PRAGMA busy_timeout = 5000");
   return db;
+}
+
+function describeTarget(target: string): string {
+  return /^postgres/i.test(target) ? "DATABASE_URL (Postgres)" : target;
 }
 
 /**
@@ -35,12 +57,12 @@ export function openRadarDatabase(): DatabaseSync {
  * `tenants`, and the API recreates the private workspace on the next
  * authenticated request, so this leaves the account in a first-sign-in state.
  */
-export function resetTenant(db: DatabaseSync, tenantId: string): void {
-  db.prepare("DELETE FROM tenants WHERE id = ?").run(tenantId);
+export function resetTenant(db: RadarDatabase, tenantId: string): void {
+  db.run("DELETE FROM tenants WHERE id = ?", [tenantId]);
 }
 
-export function tenantExists(db: DatabaseSync, tenantId: string): boolean {
-  return db.prepare("SELECT 1 FROM tenants WHERE id = ?").get(tenantId) !== undefined;
+export function tenantExists(db: RadarDatabase, tenantId: string): boolean {
+  return db.get("SELECT 1 present FROM tenants WHERE id = ?", [tenantId]) !== undefined;
 }
 
 export interface CalibrationCohortOptions {
@@ -59,7 +81,7 @@ export interface CalibrationCohortOptions {
  * the AUC-lift guardrail.
  */
 export function seedCalibrationCohort(
-  db: DatabaseSync,
+  db: RadarDatabase,
   tenantId: string,
   { runId, size = 120 }: CalibrationCohortOptions,
 ): void {
@@ -68,38 +90,27 @@ export function seedCalibrationCohort(
       `Tenant ${tenantId} does not exist yet. Make one authenticated request before seeding calibration data.`,
     );
   }
-  const insertCompany = db.prepare(
-    `INSERT INTO companies(id, tenant_id, name, normalized_name, domain, opportunity_score, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
-  const insertSnapshot = db.prepare(
-    `INSERT INTO score_snapshots(id, tenant_id, company_id, score_version, opportunity_score, opportunity_tier,
+  const insertCompany = `INSERT INTO companies(id, tenant_id, name, normalized_name, domain, opportunity_score, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+  const insertSnapshot = `INSERT INTO score_snapshots(id, tenant_id, company_id, score_version, opportunity_score, opportunity_tier,
        fit_score, need_score, intent_score, timing_score, risk_score, active_signal_count, components_json, computed_at)
-     VALUES (?, ?, ?, 'rules-1.1', 0, 'cold', ?, ?, 0, 0, 0, 0, '{}', ?)`,
-  );
-  const insertOutcome = db.prepare(
-    `INSERT INTO outcomes(id, tenant_id, company_id, outcome_type, score_at_outcome, metadata_json, occurred_at, created_at)
-     VALUES (?, ?, ?, ?, 10, '{}', ?, ?)`,
-  );
+     VALUES (?, ?, ?, 'rules-1.1', 0, 'cold', ?, ?, 0, 0, 0, 0, '{}', ?)`;
+  const insertOutcome = `INSERT INTO outcomes(id, tenant_id, company_id, outcome_type, score_at_outcome, metadata_json, occurred_at, created_at)
+     VALUES (?, ?, ?, ?, 10, '{}', ?, ?)`;
   const holdoutStart = Math.floor(size * 0.75);
   const now = new Date().toISOString();
 
-  db.exec("BEGIN IMMEDIATE");
-  try {
+  db.transaction(() => {
     for (let index = 0; index < size; index += 1) {
       const companyId = `${runId}-calibration-${index}`;
       const name = `E2E calibration ${index} (${runId})`;
       const occurredAt = new Date(Date.UTC(2021, 0, index + 1)).toISOString();
       const qualified = index >= holdoutStart ? index % 2 === 0 : index % 3 === 0;
-      insertCompany.run(companyId, tenantId, name, name.toLowerCase(), `${companyId}.example.com`, 10, now, now);
-      insertSnapshot.run(`${companyId}-snapshot`, tenantId, companyId, qualified ? 0 : 100, qualified ? 70 : 0, occurredAt);
-      insertOutcome.run(`${companyId}-outcome`, tenantId, companyId, qualified ? "meeting" : "lost", occurredAt, now);
+      db.run(insertCompany, [companyId, tenantId, name, name.toLowerCase(), `${companyId}.example.com`, 10, now, now]);
+      db.run(insertSnapshot, [`${companyId}-snapshot`, tenantId, companyId, qualified ? 0 : 100, qualified ? 70 : 0, occurredAt]);
+      db.run(insertOutcome, [`${companyId}-outcome`, tenantId, companyId, qualified ? "meeting" : "lost", occurredAt, now]);
     }
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+  });
 }
 
 export interface ScoringVersionRow {
@@ -112,22 +123,20 @@ export interface ScoringVersionRow {
   approved_by: string | null;
 }
 
-export function getScoringVersion(db: DatabaseSync, tenantId: string, id: string): ScoringVersionRow | undefined {
-  return db
-    .prepare(
-      `SELECT id, version, status, base_version, config_json, evaluation_json, approved_by
-       FROM scoring_versions WHERE tenant_id = ? AND id = ?`,
-    )
-    .get(tenantId, id) as ScoringVersionRow | undefined;
+export function getScoringVersion(db: RadarDatabase, tenantId: string, id: string): ScoringVersionRow | undefined {
+  return db.get<ScoringVersionRow>(
+    `SELECT id, version, status, base_version, config_json, evaluation_json, approved_by
+     FROM scoring_versions WHERE tenant_id = ? AND id = ?`,
+    [tenantId, id],
+  );
 }
 
-export function getApprovedScoringVersion(db: DatabaseSync, tenantId: string): ScoringVersionRow | undefined {
-  return db
-    .prepare(
-      `SELECT id, version, status, base_version, config_json, evaluation_json, approved_by
-       FROM scoring_versions WHERE tenant_id = ? AND status = 'approved'`,
-    )
-    .get(tenantId) as ScoringVersionRow | undefined;
+export function getApprovedScoringVersion(db: RadarDatabase, tenantId: string): ScoringVersionRow | undefined {
+  return db.get<ScoringVersionRow>(
+    `SELECT id, version, status, base_version, config_json, evaluation_json, approved_by
+     FROM scoring_versions WHERE tenant_id = ? AND status = 'approved'`,
+    [tenantId],
+  );
 }
 
 /**
@@ -139,7 +148,7 @@ export function getApprovedScoringVersion(db: DatabaseSync, tenantId: string): S
  * stale.
  */
 export function activateIndependentScoringVersion(
-  db: DatabaseSync,
+  db: RadarDatabase,
   tenantId: string,
   staleProposal: ScoringVersionRow,
   { runId, actor }: { runId: string; actor: string },
@@ -161,10 +170,11 @@ export function activateIndependentScoringVersion(
   const config = { ...candidate, version, dimensionWeights: baselineWeights };
   const now = new Date().toISOString();
   const id = `score_version_${runId}_independent`;
-  db.prepare(
+  db.run(
     `INSERT INTO scoring_versions(id, tenant_id, version, status, base_version, config_json, evaluation_json,
        created_at, created_by, approved_at, approved_by)
      VALUES (?, ?, ?, 'approved', ?, ?, '{}', ?, ?, ?, ?)`,
-  ).run(id, tenantId, version, staleProposal.base_version, JSON.stringify(config), now, actor, now, actor);
+    [id, tenantId, version, staleProposal.base_version, JSON.stringify(config), now, actor, now, actor],
+  );
   return version;
 }

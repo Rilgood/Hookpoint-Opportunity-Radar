@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GoogleSheetsConnector, googleSheetsTenantBindingKey } from '../src/connectors/google-sheets.js';
-import { openDatabase } from '../src/db/index.js';
+import { openTestDatabase } from './helpers/database.js';
 import { bootstrap, syncConnectorCatalog } from '../src/services/bootstrap.js';
 import { setConnectorEnabled } from '../src/services/connector-runner.js';
 import { listConnectors } from '../src/services/queries.js';
@@ -129,7 +129,7 @@ test('Google Sheets readiness is tenant-specific and stale configuration cannot 
   const tenantA = 'tenant_sheets_bound_a';
   const tenantB = 'tenant_sheets_unbound_b';
   const original = process.env.GOOGLE_SHEETS_TENANT_BINDINGS;
-  const db = openDatabase(':memory:');
+  const db = openTestDatabase();
   try {
     process.env.GOOGLE_SHEETS_TENANT_BINDINGS = JSON.stringify({
       [googleSheetsTenantBindingKey(tenantA)]: [ID]

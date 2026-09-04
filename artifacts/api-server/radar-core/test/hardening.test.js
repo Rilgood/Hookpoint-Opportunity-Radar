@@ -2,11 +2,12 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Worker } from 'node:worker_threads';
-import { openDatabase } from '../src/db/index.js';
+import { openDatabase, wrapDriver } from '../src/db/index.js';
+import { openSqlite } from '../src/db/sqlite.js';
+import { attachOptions, openTestDatabase } from './helpers/database.js';
 import { schema } from '../src/db/schema.js';
 import { applyMigrations } from '../src/db/migrations.js';
 import { bootstrap } from '../src/services/bootstrap.js';
@@ -25,7 +26,7 @@ import { GdeltConnector } from '../src/connectors/news.js';
 import { authenticate, setTrustedPrincipal } from '../src/http/security.js';
 import { id, sha256 } from '../src/lib.js';
 
-function setup() { const db = openDatabase(':memory:'); bootstrap(db); return db; }
+function setup() { const db = openTestDatabase(); bootstrap(db); return db; }
 
 const approvalWorkerSource = `
   import { parentPort, workerData } from 'node:worker_threads';
@@ -33,7 +34,7 @@ const approvalWorkerSource = `
   const { openDatabase } = await import(workerData.dbModule);
   const { approveScoreCalibration } = await import(workerData.outcomesModule);
   const { recordAudit } = await import(workerData.auditModule);
-  const db = openDatabase(workerData.databasePath);
+  const db = openDatabase(workerData.databaseTarget, workerData.databaseOptions);
 
   parentPort.postMessage({ type: 'ready' });
   parentPort.once('message', () => {
@@ -235,15 +236,17 @@ test('rejects a stale score approval after another administrator approves a newe
 });
 
 test('allows only one concurrent score approval from separate database connections', async () => {
+  // Contenders must use separate connections to the same database: a file for
+  // SQLite, a shared schema when the suite runs against Postgres.
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hookpoint-score-approval-'));
-  const databasePath = path.join(directory, 'radar.sqlite');
+  const databaseTarget = process.env.RADAR_TEST_DATABASE_URL || path.join(directory, 'radar.sqlite');
   const tenantId = 'concurrent_approval_tenant';
   const now = new Date().toISOString();
   const proposals = [
     { id: 'score_version_concurrent_a', version: `${scoringConfig.version}-concurrent-a`, actor: 'admin-a' },
     { id: 'score_version_concurrent_b', version: `${scoringConfig.version}-concurrent-b`, actor: 'admin-b' },
   ];
-  const db = openDatabase(databasePath);
+  const db = databaseTarget.startsWith('postgres') ? openTestDatabase() : openDatabase(databaseTarget);
 
   try {
     bootstrap(db);
@@ -263,7 +266,8 @@ test('allows only one concurrent score approval from separate database connectio
     }
 
     const results = await submitCompetingApprovals(proposals.map((proposal) => ({
-      databasePath,
+      databaseTarget,
+      databaseOptions: attachOptions(db),
       tenantId,
       recommendationId: proposal.id,
       actor: proposal.actor,
@@ -276,7 +280,10 @@ test('allows only one concurrent score approval from separate database connectio
     const rejected = results.filter((result) => result.status === 'rejected');
     assert.equal(approved.length, 1);
     assert.equal(rejected.length, 1);
-    assert.ok(['score_recommendation_stale', 'score_recommendation_not_pending'].includes(rejected[0].error.code));
+    // SQLite serialises the whole transaction, so the loser re-reads a stale
+    // proposal; Postgres lets both proceed until the single-active-version
+    // index rejects the second approval. Either way exactly one wins.
+    assert.ok(['score_recommendation_stale', 'score_recommendation_not_pending', 'score_approval_conflict'].includes(rejected[0].error.code), rejected[0].error.code);
 
     const versions = db.all(`SELECT id, status FROM scoring_versions WHERE tenant_id=? ORDER BY id`, [tenantId]);
     assert.equal(versions.filter((version) => version.status === 'approved').length, 1);
@@ -293,11 +300,12 @@ test('allows only one concurrent score approval from separate database connectio
 });
 
 test('migration preserves the newest approved score version and prevents further conflicts', () => {
-  const native = new DatabaseSync(':memory:');
+  const db = wrapDriver(openSqlite(':memory:'));
+  const native = db.native;
   const now = new Date().toISOString();
   try {
-    native.exec(schema);
-    native.exec(`
+    db.exec(schema);
+    db.exec(`
       CREATE TABLE scoring_versions (
         id TEXT PRIMARY KEY,
         tenant_id TEXT NOT NULL,
@@ -317,9 +325,8 @@ test('migration preserves the newest approved score version and prevents further
           ('approved-old', 'legacy-tenant', 'rules-1.1', 'approved', 'rules-1.0', '{}', '{}', '2025-01-01T00:00:00.000Z', 'admin-a', '2025-01-02T00:00:00.000Z'),
           ('approved-new', 'legacy-tenant', 'rules-1.2', 'approved', 'rules-1.1', '{}', '{}', '2025-02-01T00:00:00.000Z', 'admin-b', '2025-02-02T00:00:00.000Z');
     `);
-    const recordMigration = native.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)');
-    for (let version = 2; version <= 8; version += 1) recordMigration.run(version, now);
-    applyMigrations(native);
+    for (let version = 1; version <= 8; version += 1) db.run('INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)', [version, now]);
+    applyMigrations(db);
 
     assert.deepEqual(
       native.prepare(`SELECT id, status FROM scoring_versions WHERE tenant_id='legacy-tenant' ORDER BY id`).all().map((row) => ({ ...row })),
@@ -330,7 +337,7 @@ test('migration preserves the newest approved score version and prevents further
       (error) => error.code === 'ERR_SQLITE_ERROR' && error.errcode === 2067
     );
   } finally {
-    native.close();
+    db.close();
   }
 });
 

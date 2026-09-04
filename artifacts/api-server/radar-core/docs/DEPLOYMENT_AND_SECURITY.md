@@ -17,7 +17,9 @@ curl --fail http://localhost:8080/api/ready     # core readiness: schema, auth c
 
 The autoscale startup probe only checks `/api/healthz`, so an instance can come up while `/api/ready` is still `503`. Check `/api/ready` yourself after every publish; the core also refuses every non-public `/api/v1` request with `503 runtime_not_ready` while a critical issue is open, so unsafe configuration cannot serve data silently.
 
-The core's storage is one embedded SQLite/WAL database. Because the bundled host resolves the core's root to `artifacts/api-server/`, the default `DATABASE_PATH` is `artifacts/api-server/data/hookpoint-radar.sqlite` and the catalog/scoring files are read from `artifacts/api-server/config/`. There is no Docker image, Compose file or serverless adapter in this repository.
+Operational data lives in the Replit-managed Postgres database (`DATABASE_URL`, injected by the platform in production and present in the workspace), inside the dedicated schema `radar` (`RADAR_DB_SCHEMA`). Autoscale instances have no durable filesystem, so the embedded SQLite engine is only the fallback when `DATABASE_URL` is unset (tests, offline development); it must never hold production data. Because the bundled host resolves the core's root to `artifacts/api-server/`, that fallback lives at `artifacts/api-server/data/hookpoint-radar.sqlite` and the catalog/scoring files are read from `artifacts/api-server/config/`. There is no Docker image, Compose file or serverless adapter in this repository.
+
+Schema changes reach production through the publish flow, never through the running API: publishing copies the development database schema to production, the production core verifies the live schema against the checked-in manifest (`radar-core/src/db/schema-manifest.js`) and refuses readiness with `schema_out_of_date` if anything is missing. Keep the development database current with `pnpm --filter @workspace/api-server run db:migrate` (run automatically by `scripts/post-merge.sh`) and regenerate the manifest with `pnpm run db:manifest` inside `radar-core` after every schema or migration change.
 
 ## Configuration
 
@@ -33,9 +35,12 @@ All settings are environment variables read in `radar-core/src/config.js`. There
 | `HASH_SALT` | unset | Pepper for API-key hashes; 32+ characters whenever API keys are used |
 | `CONNECTOR_WEBHOOK_SECRET` | unset | HMAC secret for `/api/v1/webhooks/:source`; 32+ characters |
 | `ALLOWED_ORIGINS` | `http://localhost:8787` (core) / none (host CORS) | Explicit console origins; the host's `cors` middleware reads the same variable |
-| `DATABASE_PATH` | `./data/hookpoint-radar.sqlite` relative to the core's resolved root | SQLite file, or `:memory:` |
-| `ALLOW_EPHEMERAL_STORAGE` | `false` in production | Permits `:memory:`/`/tmp` storage in production; never for live data |
-| `DURABLE_STORAGE_CONFIRMED` | `false` in production | Operator assertion that `DATABASE_PATH` is on backed-up durable storage |
+| `DATABASE_URL` | injected by Replit | Postgres connection string; when set, the core stores everything there and ignores `DATABASE_PATH` |
+| `RADAR_DB_SCHEMA` | `radar` | Postgres schema that holds the radar tables, kept apart from the Drizzle-managed `public` schema |
+| `DB_STATEMENT_TIMEOUT_MS` | `30000` | Per-statement timeout applied to the Postgres session |
+| `DATABASE_PATH` | `./data/hookpoint-radar.sqlite` relative to the core's resolved root | SQLite fallback when `DATABASE_URL` is unset: a file, or `:memory:` |
+| `ALLOW_EPHEMERAL_STORAGE` | `false` in production | SQLite only: permits `:memory:`/`/tmp` storage in production; never for live data |
+| `DURABLE_STORAGE_CONFIRMED` | `false` in production | SQLite only: operator assertion that `DATABASE_PATH` is on backed-up durable storage. Not needed with Postgres |
 | `SCHEDULER_ENABLED`, `SCHEDULER_INTERVAL_MS` | `true`, `60000` | Only honoured by the standalone `src/server.js` entry point; the host does not start the scheduler |
 | `TRUST_PROXY` | `false` | Use `X-Forwarded-For` for rate limiting; set `true` behind a trusted reverse proxy such as the Replit deployment proxy |
 | `RATE_LIMIT_PER_MINUTE`, `MAX_BODY_BYTES`, `MAX_BATCH_RECORDS`, `MAX_EXPORT_ROWS`, `MAX_FUTURE_SKEW_MINUTES`, `CONNECTOR_TIMEOUT_MS`, `CONNECTOR_MAX_RECORDS`, `RESCORE_BATCH_SIZE` | see `config.js` | Request, batch, export and connector bounds |
@@ -54,16 +59,17 @@ With `NODE_ENV=production` the core evaluates `runtimeIssues()` on every non-pub
 - `authentication_disabled` – `AUTH_REQUIRED` must be true.
 - `weak_hash_salt`, `weak_admin_api_key`, `weak_webhook_secret` – each secret must be an independent value of at least 32 characters.
 - `no_active_api_key` – an `ADMIN_API_KEY` or provisioned key must exist. This and `weak_hash_salt` block API-key clients only; Clerk-authenticated console requests are still served.
-- `ephemeral_storage` – `:memory:` or `/tmp` storage in production without `ALLOW_EPHEMERAL_STORAGE=true`.
-- `durability_unconfirmed` – any other path in production without `DURABLE_STORAGE_CONFIRMED=true`.
+- `schema_out_of_date` – the Postgres schema lacks tables or columns the code expects. Production runs no DDL; migrate the development database and publish again.
+- `ephemeral_storage` – SQLite fallback on `:memory:` or `/tmp` in production without `ALLOW_EPHEMERAL_STORAGE=true`.
+- `durability_unconfirmed` – SQLite fallback on any other path in production without `DURABLE_STORAGE_CONFIRMED=true`.
 - `invalid_numeric_configuration` – a bound is outside its supported range.
 
-`DURABLE_STORAGE_CONFIRMED=true` is an operator assertion, not automatic detection. Replit autoscale instances do not keep filesystem writes across restarts or across instances, so the embedded SQLite file is not durable in the current publish target and the assertion must not be set there. Until operational data moves behind the database boundary onto managed Postgres (see the horizontal-scale gate), the production deployment is intentionally blocked from live connectors and customer data.
+With `DATABASE_URL` set the storage checks pass automatically: managed Postgres survives restarts and is shared by every instance. `DURABLE_STORAGE_CONFIRMED=true` remains an operator assertion for self-hosted SQLite only; Replit autoscale instances do not keep filesystem writes across restarts or across instances, so it must never be set there.
 
 For a production topology:
 
-1. Provision managed Postgres with point-in-time recovery.
-2. Implement the existing database boundary (`radar-core/src/db/`) against it and run monotonic migrations.
+1. Keep operational data in the managed Postgres database (point-in-time recovery and backups are the platform's; verify a restore before adding customer data).
+2. Apply schema changes by migrating the development database and publishing; watch `/api/ready` for `schema_out_of_date` after each publish.
 3. Move connector schedules and due-score refresh to a durable worker; the host does not run the in-process scheduler.
 4. Add shared rate limiting for cross-instance enforcement.
 5. Configure production secrets and explicit `ALLOWED_ORIGINS`.
@@ -119,13 +125,13 @@ The signed bytes are exactly `<timestamp>.<source>.<raw request body>`, where `s
 
 ## Backup and recovery
 
-For SQLite, back up the mounted volume using SQLite's online backup API or a coordinated filesystem snapshot. Copying only the main file while WAL writes are active can be inconsistent. Encrypt backups, test a restore at least monthly, and include tenant, observation, evidence, scoring, outcome and audit tables.
+Production data is in the Replit-managed Postgres database; use the platform's backup and point-in-time recovery, and restore into a scratch database to verify it at least monthly. Every table sits in the `radar` schema, so a schema-level dump (`pg_dump --schema=radar`) captures tenant, observation, evidence, scoring, outcome and audit tables together. For a self-hosted SQLite fallback, back up the volume with SQLite's online backup API or a coordinated snapshot; copying only the main file while WAL writes are active can be inconsistent.
 
 Define recovery point and recovery time objectives before enabling first-party or paid provider connectors.
 
 ## Horizontal-scale gate
 
-Move to managed Postgres and durable workers before any of the following:
+Operational data is already in managed Postgres. Move to durable workers and shared coordination before any of the following:
 
 - more than one application replica needs writes;
 - connector work must survive process restarts;
@@ -137,7 +143,7 @@ Move to managed Postgres and durable workers before any of the following:
 
 - `pnpm run verify:radar-core` (core syntax check and test suite) and `pnpm run typecheck` pass on the release commit
 - `/api/ready` is `200` and reports no critical issue after the publish
-- Database storage is durable and backups restore successfully
+- `/api/ready` reports `storage_mode: postgres` and a Postgres restore has been rehearsed
 - Authentication and least-privilege key lifecycle work
 - CORS contains only production origins
 - Webhook stale timestamp and bad signature both fail

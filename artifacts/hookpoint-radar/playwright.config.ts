@@ -18,7 +18,10 @@ import { defineConfig } from "@playwright/test";
 //   E2E_BASE_URL       Origin serving the app. Defaults to https://$REPLIT_DEV_DOMAIN.
 //   E2E_CHROMIUM_PATH  Chromium binary. Defaults to the workspace chromium when
 //                      present; otherwise Playwright's bundled browser is used.
-//   E2E_DATABASE_PATH  Radar SQLite file used by the running API server.
+//   E2E_DATABASE_URL   Postgres URL of the database behind the running API
+//                      server. Defaults to DATABASE_URL, which the API server
+//                      itself uses when it is set.
+//   E2E_DATABASE_PATH  Radar SQLite file, used only when no Postgres URL is set.
 //                      Defaults to artifacts/api-server/data/hookpoint-radar.sqlite.
 
 const devDomain = process.env.REPLIT_DEV_DOMAIN;

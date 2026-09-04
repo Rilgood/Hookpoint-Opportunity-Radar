@@ -1,13 +1,13 @@
 import http from 'node:http';
 import { config } from './config.js';
 import { getDb, closeDb } from './db/index.js';
-import { createApp, log } from './app.js';
+import { createApp, log, schemaReady } from './app.js';
 import { startScheduler } from './services/connector-runner.js';
 
 const db = getDb();
 const handler = createApp(db, { serveStaticAssets: true });
 const server = http.createServer(handler);
-const stopScheduler = config.schedulerEnabled ? startScheduler(db, config.schedulerIntervalMs) : () => {};
+const stopScheduler = config.schedulerEnabled && schemaReady(db) ? startScheduler(db, config.schedulerIntervalMs) : () => {};
 
 server.listen(config.port, config.host, () => log('info', 'server_started', {
   host: config.host,

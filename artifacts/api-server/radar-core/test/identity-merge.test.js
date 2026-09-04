@@ -1,7 +1,7 @@
 import http from 'node:http';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openDatabase } from '../src/db/index.js';
+import { openTestDatabase } from './helpers/database.js';
 import { createApp } from '../src/app.js';
 import { config } from '../src/config.js';
 import { bootstrap } from '../src/services/bootstrap.js';
@@ -10,7 +10,7 @@ import { ingestOne } from '../src/services/ingestion.js';
 import { companyDetail } from '../src/services/queries.js';
 
 function setup() {
-  const db = openDatabase(':memory:');
+  const db = openTestDatabase();
   bootstrap(db);
   return db;
 }

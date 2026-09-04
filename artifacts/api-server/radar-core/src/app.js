@@ -17,17 +17,26 @@ import { authenticate, enforceRateLimit, requireScope, securityHeaders } from '.
 import { observationTypes } from './observation-contract.js';
 import { approveScoreCalibration, evaluateScoreCalibration, outcomeAnalytics, recordOutcome } from './services/outcomes.js';
 import { analyticsInsights, companyInsights } from './services/insights.js';
+import { currentVersion } from './db/migrations.js';
+
+export function schemaReady(db) {
+  return !db.schemaStatus || db.schemaStatus.ok;
+}
 
 export function createApp(db, { serveStaticAssets = true } = {}) {
-  bootstrap(db);
+  // With a verified schema the process seeds its tenant, keys and connector
+  // catalog. When production is behind the checked-in schema, skip seeding and
+  // let readiness report schema_out_of_date instead of failing on missing columns.
+  if (schemaReady(db)) bootstrap(db);
+  else log('error', 'schema_out_of_date', { expected_version: db.schemaStatus.expectedVersion, missing: db.schemaStatus.missing });
   const router = new Router();
 
   const health = async () => ({ status: 'ok', service: 'hookpoint-opportunity-radar', version: '1.1.0', time: nowIso() });
   const readiness = async () => {
-    const migration = db.get('SELECT MAX(version) version FROM schema_migrations');
+    const version = schemaReady(db) ? currentVersion(db) : 0;
     const issues = runtimeIssues(db);
-    const ready = Boolean(migration?.version) && !issues.some((issue) => issue.severity === 'critical');
-    return { status: ready ? 200 : 503, data: { status: ready ? 'ready' : 'not_ready', schema_version: migration?.version || 0, storage_mode: config.storageMode, issues } };
+    const ready = Boolean(version) && !issues.some((issue) => issue.severity === 'critical');
+    return { status: ready ? 200 : 503, data: { status: ready ? 'ready' : 'not_ready', schema_version: version, storage_mode: config.storageMode, issues } };
   };
   router.get('/health', health, { publicRoute: true });
   router.get('/ready', readiness, { publicRoute: true });
@@ -220,6 +229,11 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
         throw new AppError(404, 'asset_not_found', 'Asset not found.');
       }
       const route = router.match(req.method, url.pathname);
+      if (config.env === 'production' && url.pathname.startsWith('/api/') && !route.options.publicRoute && !schemaReady(db)) {
+        // Authentication reads application tables, so gate on the schema first.
+        const critical = runtimeIssues(db).filter((issue) => issue.severity === 'critical');
+        throw new AppError(503, 'runtime_not_ready', 'The service is not ready for production traffic.', critical.map(({ code }) => code));
+      }
       const auth = authenticate(db, req, route.options);
       if (config.env === 'production' && url.pathname.startsWith('/api/') && !route.options.publicRoute) {
         const apiKeyOnlyIssues = new Set(['weak_hash_salt', 'no_active_api_key']);

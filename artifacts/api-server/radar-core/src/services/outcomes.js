@@ -1,6 +1,7 @@
 import { AppError, id, isPlainObject, json, nowIso, redactSecrets, round, stableJson } from '../lib.js';
 import { config } from '../config.js';
 import { activeScoringConfig, scoringConfig } from './catalog.js';
+import { isUniqueViolation } from '../db/index.js';
 
 const types = new Set(['accepted','rejected','contacted','positive_reply','negative_reply','meeting','opportunity','won','lost','disqualified','suppression_correct','suppression_wrong']);
 const statusByOutcome = { accepted: 'accepted', rejected: 'rejected', contacted: 'contacted', positive_reply: 'replied', negative_reply: 'contacted', meeting: 'meeting', opportunity: 'opportunity', won: 'customer', lost: 'lost', disqualified: 'disqualified' };
@@ -72,12 +73,12 @@ export function outcomeAnalytics(db, tenantId) {
       CASE WHEN score_at_outcome>=? THEN 'hot' WHEN score_at_outcome>=? THEN 'warm' WHEN score_at_outcome>=? THEN 'watch' ELSE 'cold' END score_band,
       COUNT(*) labeled,
       SUM(CASE WHEN outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) positive,
-      ROUND(100.0 * SUM(CASE WHEN outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) / COUNT(*), 1) positive_rate
-    FROM outcomes WHERE tenant_id=? GROUP BY score_band ORDER BY MIN(score_at_outcome) DESC`,
+      ROUND(CAST(100.0 * SUM(CASE WHEN outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) / COUNT(*) AS NUMERIC), 1) positive_rate
+    FROM outcomes WHERE tenant_id=? GROUP BY 1 ORDER BY MIN(score_at_outcome) DESC`,
   [scoringConfig.tierThresholds.hot, scoringConfig.tierThresholds.warm, scoringConfig.tierThresholds.watch, tenantId]);
   const signalPerformance = db.all(`SELECT o.signal_key, s.label, COUNT(*) labeled,
       SUM(CASE WHEN o.outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) positive,
-      ROUND(100.0 * SUM(CASE WHEN o.outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) / COUNT(*), 1) positive_rate
+      ROUND(CAST(100.0 * SUM(CASE WHEN o.outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) / COUNT(*) AS NUMERIC), 1) positive_rate
     FROM outcomes o LEFT JOIN signals s ON s.tenant_id=o.tenant_id AND s.company_id=o.company_id AND s.signal_key=o.signal_key
     WHERE o.tenant_id=? AND o.signal_key IS NOT NULL GROUP BY o.signal_key, s.label ORDER BY positive_rate DESC, labeled DESC`, [tenantId]);
   const labelEvents = db.all(`SELECT company_id, outcome_type, score_at_outcome
@@ -209,10 +210,7 @@ export function approveScoreCalibration(db, tenantId, recommendationId, actor) {
 }
 
 function isActiveScoreVersionConflict(error) {
-  return error?.code === 'ERR_SQLITE_ERROR'
-    && error?.errcode === 2067
-    && typeof error.message === 'string'
-    && error.message.includes('UNIQUE constraint failed: scoring_versions.tenant_id');
+  return isUniqueViolation(error, { table: 'scoring_versions', column: 'tenant_id' });
 }
 
 function firstOutcomeLabels(db, tenantId) {

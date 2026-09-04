@@ -1,4 +1,4 @@
-import { addDays, clamp, daysBetween, id, json, nowIso, round, stableJson } from '../lib.js';
+import { addDays, clamp, daysBetween, earliestIso, id, json, nowIso, round, stableJson } from '../lib.js';
 import { activeScoringConfig, scoringConfig, signalCatalog, signalByKey } from './catalog.js';
 
 export function detectSignals(observation) {
@@ -27,13 +27,13 @@ export function applySignals(db, tenantId, company, observation, definitions = d
       const newer = new Date(observation.observed_at).getTime() >= new Date(signal.last_seen_at).getTime();
       const lastSeen = newer ? observation.observed_at : signal.last_seen_at;
       db.run(
-        `UPDATE signals SET summary=?, status=CASE WHEN ?>=? THEN 'active' ELSE status END,
-          first_seen_at=MIN(first_seen_at, ?), last_seen_at=?, expires_at=?, updated_at=? WHERE id=?`,
+        `UPDATE signals SET summary=?, status=CASE WHEN CAST(? AS TEXT)>=CAST(? AS TEXT) THEN 'active' ELSE status END,
+          first_seen_at=?, last_seen_at=?, expires_at=?, updated_at=? WHERE id=?`,
         [newer ? summary : signal.summary, addDays(lastSeen, definition.halfLifeDays * 2), now,
-          observation.observed_at, lastSeen, addDays(lastSeen, definition.halfLifeDays * 2), now, signal.id]
+          earliestIso(signal.first_seen_at, observation.observed_at), lastSeen, addDays(lastSeen, definition.halfLifeDays * 2), now, signal.id]
       );
     }
-    db.run(`INSERT OR IGNORE INTO signal_evidence(signal_id, observation_id, source, linked_at) VALUES (?, ?, ?, ?)`, [signal.id, observation.id, observation.source, now]);
+    db.run(`INSERT INTO signal_evidence(signal_id, observation_id, source, linked_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [signal.id, observation.id, observation.source, now]);
     refreshSignalEvidence(db, signal.id, definition, now);
     applied.push(definition.key);
   }

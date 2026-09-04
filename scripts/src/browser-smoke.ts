@@ -18,7 +18,7 @@
  *   CLERK_SECRET_KEY           Clerk Backend API key (workspace secret).
  * Optional environment:
  *   BROWSER_SMOKE_STARTUP_MS   How long to wait for the services (default 180000).
- *   E2E_CHROMIUM_PATH, E2E_DATABASE_PATH, E2E_CLERK_EMAIL are forwarded to Playwright.
+ *   E2E_CHROMIUM_PATH, E2E_DATABASE_URL, E2E_DATABASE_PATH, E2E_CLERK_EMAIL are forwarded to Playwright.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";

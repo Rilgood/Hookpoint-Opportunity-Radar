@@ -1,4 +1,5 @@
 import { AppError, clamp, id, normalizeDomain, normalizeName, nowIso, safeHttpUrl } from '../lib.js';
+import { isUniqueViolation } from '../db/index.js';
 
 const companyFields = [
   'name', 'domain', 'website_url', 'linkedin_url', 'industry', 'subindustry', 'employee_count',
@@ -84,7 +85,7 @@ export function createCompany(db, tenantId, input = {}, options = {}) {
         options.identityMethod || manualIdentity.method, now, now]
     );
   } catch (error) {
-    if (String(error.message).includes('UNIQUE constraint failed')) throw new AppError(409, 'company_conflict', 'A company with this identity already exists.');
+    if (isUniqueViolation(error)) throw new AppError(409, 'company_conflict', 'A company with this identity already exists.');
     throw error;
   }
   addAliases(db, tenantId, companyId, clean, options.source || 'manual');
@@ -120,8 +121,8 @@ export function mergeCompanies(db, tenantId, sourceCompanyId, input = {}, actor 
   for (const signal of sourceSignals) {
     const duplicate = db.get('SELECT id FROM signals WHERE tenant_id=? AND company_id=? AND signal_key=?', [tenantId, targetCompanyId, signal.signal_key]);
     if (duplicate) {
-      db.run(`INSERT OR IGNORE INTO signal_evidence(signal_id, observation_id, source, linked_at)
-        SELECT ?, observation_id, source, linked_at FROM signal_evidence WHERE signal_id=?`, [duplicate.id, signal.id]);
+      db.run(`INSERT INTO signal_evidence(signal_id, observation_id, source, linked_at)
+        SELECT ?, observation_id, source, linked_at FROM signal_evidence WHERE signal_id=? ON CONFLICT DO NOTHING`, [duplicate.id, signal.id]);
       db.run('DELETE FROM signals WHERE id=?', [signal.id]);
     }
   }
@@ -139,8 +140,9 @@ export function mergeCompanies(db, tenantId, sourceCompanyId, input = {}, actor 
     if (exists) db.run('DELETE FROM company_aliases WHERE id=?', [alias.id]);
     else db.run('UPDATE company_aliases SET company_id=? WHERE id=?', [targetCompanyId, alias.id]);
   }
-  db.run(`INSERT OR IGNORE INTO company_source_identities(id, tenant_id, company_id, source, identity_type, normalized_value, created_at)
-    SELECT id, tenant_id, ?, source, identity_type, normalized_value, created_at FROM company_source_identities WHERE tenant_id=? AND company_id=?`, [targetCompanyId, tenantId, sourceCompanyId]);
+  db.run(`INSERT INTO company_source_identities(id, tenant_id, company_id, source, identity_type, normalized_value, created_at)
+    SELECT id, tenant_id, ?, source, identity_type, normalized_value, created_at FROM company_source_identities WHERE tenant_id=? AND company_id=?
+    ON CONFLICT DO NOTHING`, [targetCompanyId, tenantId, sourceCompanyId]);
   db.run('DELETE FROM company_source_identities WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
   recordReviewAction(db, tenantId, sourceCompanyId, 'identity.merged', actor, input.note, { target_company_id: targetCompanyId, source_name: source.name });
   recordReviewAction(db, tenantId, targetCompanyId, 'identity.merge_received', actor, input.note, {
@@ -201,7 +203,7 @@ export function updateCompany(db, tenantId, companyId, input = {}, options = {})
     try {
       db.run(`UPDATE companies SET ${names.map((key) => `${key}=?`).join(', ')} WHERE tenant_id=? AND id=?`, [...names.map((key) => updates[key]), tenantId, companyId]);
     } catch (error) {
-      if (String(error.message).includes('UNIQUE constraint failed')) throw new AppError(409, 'company_conflict', 'The updated company identity conflicts with another company.');
+      if (isUniqueViolation(error)) throw new AppError(409, 'company_conflict', 'The updated company identity conflicts with another company.');
       throw error;
     }
     if (closedStatuses.has(updates.status)) db.run('DELETE FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, companyId]);
@@ -301,8 +303,8 @@ function addAliases(db, tenantId, companyId, values, source) {
     }
     if (!existing) db.run(`INSERT INTO company_aliases(id, tenant_id, company_id, alias_type, alias_value, normalized_value, source, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [id('alias'), tenantId, companyId, type, String(value), normalized, source, nowIso()]);
-    if (type === 'name') db.run(`INSERT OR IGNORE INTO company_source_identities(id, tenant_id, company_id, source, identity_type, normalized_value, created_at)
-      VALUES (?, ?, ?, ?, 'name', ?, ?)`, [id('source_identity'), tenantId, companyId, String(source).slice(0, 100), normalized, nowIso()]);
+    if (type === 'name') db.run(`INSERT INTO company_source_identities(id, tenant_id, company_id, source, identity_type, normalized_value, created_at)
+      VALUES (?, ?, ?, ?, 'name', ?, ?) ON CONFLICT DO NOTHING`, [id('source_identity'), tenantId, companyId, String(source).slice(0, 100), normalized, nowIso()]);
   }
 }
 

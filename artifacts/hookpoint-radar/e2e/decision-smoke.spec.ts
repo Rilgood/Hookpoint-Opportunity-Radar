@@ -1,11 +1,11 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import type { DatabaseSync } from "node:sqlite";
 import { ensureClerkTestUser, signInWithClerk, type ClerkTestUser } from "./clerk-session";
 import {
   activateIndependentScoringVersion,
   getApprovedScoringVersion,
   getScoringVersion,
   openRadarDatabase,
+  type RadarDatabase,
   resetTenant,
   seedCalibrationCohort,
 } from "./radar-db";
@@ -41,7 +41,7 @@ const runId = `e2e${Date.now().toString(36)}`;
 test.describe.configure({ mode: "serial" });
 
 test.describe("authenticated decision smoke journey", () => {
-  let db: DatabaseSync;
+  let db: RadarDatabase;
   let user: ClerkTestUser;
   let context: BrowserContext;
   let page: Page;

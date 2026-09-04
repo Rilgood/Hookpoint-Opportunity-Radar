@@ -65,7 +65,7 @@ function deriveMetrics(db, tenantId, companyId, observation) {
   const attributes = { ...observation.attributes };
   if (observation.type !== 'ad_snapshot' || attributes.metric_scope !== 'account_snapshot' || !finite(attributes.active_ads)) return attributes;
   const previous = db.get(`SELECT attributes_json FROM observations WHERE tenant_id=? AND company_id=? AND source=? AND type='ad_snapshot'
-    AND json_extract(attributes_json, '$.metric_scope')='account_snapshot' ORDER BY observed_at DESC, ingested_at DESC LIMIT 1`,
+    AND ${db.sql.jsonText('attributes_json', 'metric_scope')}='account_snapshot' ORDER BY observed_at DESC, ingested_at DESC LIMIT 1`,
   [tenantId, companyId, observation.source]);
   const previousAttributes = json(previous?.attributes_json, null);
   if (!previousAttributes || !finite(previousAttributes.active_ads)) return attributes;

@@ -1,11 +1,11 @@
+/**
+ * Baseline schema (version 1). Written in the SQL subset shared by SQLite and
+ * Postgres: TEXT/INTEGER/DOUBLE PRECISION columns, `CREATE ... IF NOT EXISTS`,
+ * standard `ON CONFLICT` clauses. Engine-specific setup (SQLite PRAGMAs, the
+ * Postgres schema) lives in the adapters, and later changes live in
+ * migrations.js. Never edit tables here in place.
+ */
 export const schema = `
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-PRAGMA busy_timeout = 5000;
-PRAGMA synchronous = NORMAL;
-PRAGMA temp_store = MEMORY;
-PRAGMA wal_autocheckpoint = 1000;
-
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY,
   applied_at TEXT NOT NULL
@@ -44,18 +44,18 @@ CREATE TABLE IF NOT EXISTS companies (
   subindustry TEXT,
   employee_count INTEGER,
   size_band TEXT,
-  annual_revenue REAL,
+  annual_revenue DOUBLE PRECISION,
   city TEXT,
   state TEXT,
   country TEXT DEFAULT 'US',
   status TEXT NOT NULL DEFAULT 'prospect',
   monitoring_tier TEXT NOT NULL DEFAULT 'universe',
-  fit_score REAL NOT NULL DEFAULT 50,
-  need_score REAL NOT NULL DEFAULT 0,
-  intent_score REAL NOT NULL DEFAULT 0,
-  timing_score REAL NOT NULL DEFAULT 0,
-  risk_score REAL NOT NULL DEFAULT 0,
-  opportunity_score REAL NOT NULL DEFAULT 0,
+  fit_score DOUBLE PRECISION NOT NULL DEFAULT 50,
+  need_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+  intent_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+  timing_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+  risk_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+  opportunity_score DOUBLE PRECISION NOT NULL DEFAULT 0,
   opportunity_tier TEXT NOT NULL DEFAULT 'cold',
   owner_name TEXT,
   crm_id TEXT,
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS people (
   linkedin_url TEXT,
   phone TEXT,
   is_decision_maker INTEGER NOT NULL DEFAULT 0,
-  confidence REAL NOT NULL DEFAULT 0.5,
+  confidence DOUBLE PRECISION NOT NULL DEFAULT 0.5,
   source TEXT,
   external_id TEXT,
   created_at TEXT NOT NULL,
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS observations (
   body TEXT,
   url TEXT,
   attributes_json TEXT NOT NULL DEFAULT '{}',
-  confidence REAL NOT NULL DEFAULT 0.7,
+  confidence DOUBLE PRECISION NOT NULL DEFAULT 0.7,
   observed_at TEXT NOT NULL,
   ingested_at TEXT NOT NULL,
   content_hash TEXT NOT NULL,
@@ -148,10 +148,10 @@ CREATE TABLE IF NOT EXISTS signals (
   category TEXT NOT NULL,
   dimension TEXT NOT NULL,
   polarity INTEGER NOT NULL DEFAULT 1,
-  base_weight REAL NOT NULL,
-  strength REAL NOT NULL DEFAULT 1,
-  confidence REAL NOT NULL,
-  contribution REAL NOT NULL DEFAULT 0,
+  base_weight DOUBLE PRECISION NOT NULL,
+  strength DOUBLE PRECISION NOT NULL DEFAULT 1,
+  confidence DOUBLE PRECISION NOT NULL,
+  contribution DOUBLE PRECISION NOT NULL DEFAULT 0,
   evidence_count INTEGER NOT NULL DEFAULT 1,
   source_count INTEGER NOT NULL DEFAULT 1,
   summary TEXT NOT NULL,
@@ -210,8 +210,8 @@ CREATE TABLE IF NOT EXISTS outcomes (
   company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   outcome_type TEXT NOT NULL,
   signal_key TEXT,
-  score_at_outcome REAL NOT NULL,
-  amount REAL,
+  score_at_outcome DOUBLE PRECISION NOT NULL,
+  amount DOUBLE PRECISION,
   note TEXT,
   metadata_json TEXT NOT NULL DEFAULT '{}',
   occurred_at TEXT NOT NULL,
@@ -272,6 +272,4 @@ CREATE TABLE IF NOT EXISTS audit_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_events ON audit_events(tenant_id, created_at DESC);
-
-INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, datetime('now'));
 `;

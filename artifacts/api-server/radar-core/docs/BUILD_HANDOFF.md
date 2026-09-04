@@ -4,15 +4,15 @@
 
 Version 1.1 is a clean, provider-ready application kernel. Runtime placeholder data and the internal generator have been removed. Startup creates only the default tenant, connector registry and an explicitly configured bootstrap administrator key.
 
-Release verification is `pnpm run verify:radar-core` from the repository root (also registered as the `radar-core` validation workflow): a syntax check over `src/` and `test/` plus the `node --test` suite, currently 73 tests covering empty startup, authenticated ingestion, signed-webhook replay defense, entity resolution and identity merge, scoring/suppression, connector normalizers and hardening, quality telemetry, CSV export, insights and outcome calibration. The signed-in browser journey against the console lives in `artifacts/hookpoint-radar/e2e/`.
+Release verification is `pnpm run verify:radar-core` from the repository root (also registered as the `radar-core` validation workflow): a syntax check over `src/` and `test/` plus the `node --test` suite, currently 77 tests (run on in-memory SQLite and again on Postgres when `DATABASE_URL` is set) covering empty startup, authenticated ingestion, signed-webhook replay defense, entity resolution and identity merge, scoring/suppression, connector normalizers and hardening, quality telemetry, CSV export, insights and outcome calibration. The signed-in browser journey against the console lives in `artifacts/hookpoint-radar/e2e/`.
 
-The core runs only inside the `@workspace/api-server` Express host (`artifacts/api-server/src/app.ts`), which mounts it under `/api`, bridges Clerk sessions into private workspace tenants and is published as a Replit autoscale service. The host does not start the core's in-process scheduler. The embedded SQLite database is functional for local development and the pilot, but autoscale storage is not durable, so the production gate (`durability_unconfirmed`) blocks live connectors and customer data until the database boundary is implemented on managed Postgres. See `DEPLOYMENT_AND_SECURITY.md`.
+The core runs only inside the `@workspace/api-server` Express host (`artifacts/api-server/src/app.ts`), which mounts it under `/api`, bridges Clerk sessions into private workspace tenants and is published as a Replit autoscale service. The host does not start the core's in-process scheduler. Operational data lives in the Replit-managed Postgres database (schema `radar`) through the synchronous `src/db/` boundary, so it survives autoscale restarts; the embedded SQLite engine is the fallback for tests and offline development only. Production never runs DDL: the publish flow copies the development schema and the core verifies it against a checked-in manifest (`schema_out_of_date` blocks readiness otherwise). See `DEPLOYMENT_AND_SECURITY.md`.
 
 ## First implementation sequence
 
 1. Run `pnpm run verify:radar-core` and `pnpm run typecheck`.
 2. Generate independent 32+ character admin, hash and webhook secrets as workspace secrets.
-3. Provision durable storage (managed Postgres behind `src/db/`) and a tested backup/restore path.
+3. Rehearse a restore of the managed Postgres database before adding customer data; storage itself is already durable.
 4. Keep the console on Clerk sign-in; issue least-privilege API keys only to direct integrations.
 5. Connect HubSpot/Salesforce first so model outcomes can be measured.
 6. Configure Apify and pin the exact actor IDs/versions approved for use.
@@ -50,7 +50,7 @@ Optimize for accepted opportunities and revenue, with a hard constraint on suppr
 ## Operational gates
 
 - `/api/ready` returns `ready` with no critical issues
-- Production storage is durable and shared by every API/worker instance
+- `/api/ready` reports `storage_mode: postgres` (durable, shared by every API/worker instance)
 - Authentication, least-privilege scopes and key revocation are verified
 - CORS contains only explicit console origins
 - Webhook timestamp/signature rejection is verified

@@ -65,6 +65,16 @@ export function slugify(input = '') {
   return normalizeName(input).replaceAll(' ', '-').slice(0, 80) || 'company';
 }
 
+export function daysAgo(days) {
+  return addDays(new Date().toISOString(), -Number(days));
+}
+
+export function earliestIso(...values) {
+  const candidates = values.filter(Boolean).map((value) => ({ value, time: new Date(value).getTime() })).filter((entry) => Number.isFinite(entry.time));
+  if (!candidates.length) return values.find(Boolean) ?? null;
+  return candidates.reduce((earliest, entry) => (entry.time < earliest.time ? entry : earliest)).value;
+}
+
 export function addDays(iso, days) {
   const date = new Date(iso || Date.now());
   date.setTime(date.getTime() + Number(days) * 86_400_000);

@@ -34,7 +34,7 @@ The repository starts with an empty database. It contains no runtime placeholder
 - Scoped API-key creation, one-time token delivery, use tracking and revocation
 - Authenticated CSV export up to a configurable limit
 - Operator console (`artifacts/hookpoint-radar`) with server-side search, pagination, empty-state onboarding and data-quality monitoring
-- In-place SQLite schema migrations, WAL tuning and release verification
+- One synchronous database boundary over managed Postgres (production and the workspace) or embedded SQLite (tests, offline development), with monotonic migrations, a checked-in schema manifest and release verification
 
 ## How this package is deployed
 
@@ -43,10 +43,23 @@ There is exactly one runtime for this code: the Express host in `artifacts/api-s
 - `artifacts/api-server/src/app.ts` imports `createApp` from `radar-core/src/app.js` with `serveStaticAssets: false` and forwards `/api/v1/*`, `/api/health` and `/api/ready` to it. Everything else on the host (Clerk proxy, `/api/healthz`) is ordinary Express.
 - Browser users sign in with Clerk. The host verifies the session and hands the Clerk user ID to the core through `setTrustedPrincipal`, which maps each user to a private workspace tenant with `read`, `write` and `admin` scopes. Requests that carry an `X-API-Key` header bypass Clerk entirely and are authenticated by the core's own API-key store.
 - The operator console is the React/Vite app in `artifacts/hookpoint-radar`. `radar-core` ships no HTML, CSS or static assets, and the host never serves any from it.
-- `artifacts/api-server` is bundled with esbuild into `artifacts/api-server/dist/index.mjs`. Because the core resolves its root directory relative to the running file, the **bundled** runtime reads `artifacts/api-server/config/*.json` and stores its database at `artifacts/api-server/data/hookpoint-radar.sqlite`. The copies under `radar-core/config/` are what the tests and any direct `node src/server.js` run use. Keep the two `config/` directories identical; edit both when you change a catalog or scoring version.
+- `artifacts/api-server` is bundled with esbuild into `artifacts/api-server/dist/index.mjs`. Because the core resolves its root directory relative to the running file, the **bundled** runtime reads `artifacts/api-server/config/*.json` and, when no `DATABASE_URL` is set, stores its SQLite fallback at `artifacts/api-server/data/hookpoint-radar.sqlite`. The copies under `radar-core/config/` are what the tests and any direct `node src/server.js` run use. Keep the two `config/` directories identical; edit both when you change a catalog or scoring version.
 - The host does not start the core's in-process scheduler. Connector schedules and due-score refresh therefore do not fire on their own in this deployment; trigger them with `POST /api/v1/connectors/:key/run` and `POST /api/v1/rescore` until the host wires in a scheduler.
 
-The deployment target is the Replit autoscale publish described in `artifacts/api-server/.replit-artifact/artifact.toml`: build with `pnpm --filter @workspace/api-server run build`, run `node --enable-source-maps artifacts/api-server/dist/index.mjs` with `NODE_ENV=production`, and use `/api/healthz` as the startup probe.
+The deployment target is the Replit autoscale publish described in `artifacts/api-server/.replit-artifact/artifact.toml`: build with `pnpm --filter @workspace/api-server run build`, run `node --enable-source-maps artifacts/api-server/dist/index.mjs` with `NODE_ENV=production`, and use `/api/healthz` as the startup probe. Replit injects the production `DATABASE_URL` of the managed Postgres database, which is where every table lives (see [Storage](#storage)).
+
+## Storage
+
+`radar-core/src/db/` is a synchronous boundary (`run`, `get`, `all`, `exec`, `transaction`) with two engines behind it:
+
+- **Postgres** whenever `DATABASE_URL` is set. This is the workspace default and the only supported production store: autoscale instances have no durable disk, so the embedded file would be emptied on every restart or new instance. All tables live in the dedicated Postgres schema named by `RADAR_DB_SCHEMA` (default `radar`), separate from the `public` schema that `pnpm --filter db push` manages and would otherwise wipe. Postgres access goes through a worker thread so the core keeps its synchronous call style; the `pg` driver is a dependency of the host package, not of this directory.
+- **SQLite** (`DATABASE_PATH`, or `:memory:`) when no `DATABASE_URL` is set. The test suite runs on in-memory SQLite by default and again on Postgres when `DATABASE_URL` is available.
+
+Schema ownership follows the Replit publish flow:
+
+- Outside production the core applies `schema.js` plus every pending migration on startup, and `pnpm run db:migrate` (or `pnpm --filter @workspace/api-server run db:migrate` from the repository root, which `scripts/post-merge.sh` runs after every merge) does the same without starting a server.
+- In production the core **never runs DDL**. Publishing copies the development database schema to production; on startup the core verifies the live schema against the checked-in manifest `src/db/schema-manifest.js` and only records already-applied migrations. A missing table, column or named index raises the critical `schema_out_of_date` issue: `/api/ready` returns `503`, bootstrap and the scheduler stay off, and the message names what is missing. The fix is to migrate the development database and publish again.
+- After changing `schema.js` or adding a migration, run `pnpm run db:manifest`; the `schema-manifest` test fails until the manifest is regenerated. Migrations may carry `before`/`after` data steps around their DDL so the same steps run as data-only work in production.
 
 ## Run locally
 
@@ -78,9 +91,9 @@ Verify a clean checkout from the repository root:
 pnpm run verify:radar-core
 ```
 
-That script runs this package's `check` (syntax-checks every file under `src/` and `test/`) and `test` (the `node --test` suite against in-memory and temporary SQLite databases: it confirms the starting dataset is empty, ingests canonical fixtures, and exercises entity resolution, scoring, crisis suppression, webhook replay defense, connector hardening and CSV export). Nothing is written to the working database. The same command is registered as the `radar-core` validation workflow. You can also run `pnpm run check` and `pnpm run test` from inside `artifacts/api-server/radar-core`.
+That script runs this package's `check` (syntax-checks every file under `src/` and `test/`) and `test` (the `node --test` suite against in-memory SQLite, and a second pass against the workspace Postgres in disposable per-test schemas when `DATABASE_URL` is set: it confirms the starting dataset is empty, ingests canonical fixtures, and exercises entity resolution, scoring, crisis suppression, webhook replay defense, connector hardening and CSV export). Nothing is written to the working `radar` schema. The same command is registered as the `radar-core` validation workflow. You can also run `pnpm run check`, `pnpm run test` and `pnpm run test:postgres` from inside `artifacts/api-server/radar-core`; set `RADAR_TEST_DATABASE_URL` to point the Postgres pass at a different database.
 
-To start over locally, stop the API host and delete `artifacts/api-server/data/hookpoint-radar.sqlite` along with its `-wal` and `-shm` companions (or whatever `DATABASE_PATH` points at); the schema is recreated on the next start. The database file is git-ignored.
+To start over locally on Postgres, stop the API host and `DROP SCHEMA radar CASCADE` (or set `RADAR_DB_SCHEMA` to a fresh name); on SQLite delete `artifacts/api-server/data/hookpoint-radar.sqlite` along with its `-wal` and `-shm` companions. The schema is recreated on the next non-production start. The SQLite file is git-ignored.
 
 ## Production gate
 
@@ -88,9 +101,10 @@ The core refuses production traffic until its configuration is safe. When `NODE_
 
 - `AUTH_REQUIRED` defaults to `true` in production and must stay there.
 - `HASH_SALT`, `ADMIN_API_KEY` and `CONNECTOR_WEBHOOK_SECRET`, when set, must each be independent random values of at least 32 characters. `weak_hash_salt` and `no_active_api_key` block API-key clients but not Clerk-authenticated console users.
-- `durability_unconfirmed`: production storage must be a durable, backed-up volume, and the operator must assert that with `DURABLE_STORAGE_CONFIRMED=true`. Replit autoscale instances do not keep filesystem writes across restarts or instances, so the embedded SQLite file is **not** durable there. Do not set the assertion on autoscale; move operational data to Postgres (see [Supported scope](#supported-scope)) before enabling live connectors or customer data.
+- `schema_out_of_date`: the Postgres schema is missing tables or columns the running code expects. Production never runs DDL; migrate the development database (`pnpm --filter @workspace/api-server run db:migrate`) and publish again so the schema is copied across.
+- `ephemeral_storage` / `durability_unconfirmed`: these only apply when the core falls back to SQLite because `DATABASE_URL` is unset. Managed Postgres is durable, so `DURABLE_STORAGE_CONFIRMED` is unnecessary there. Replit autoscale instances do not keep filesystem writes across restarts or instances, so never assert durability for a SQLite file on autoscale.
 
-`/api/health` is process liveness only. `/api/ready` also checks schema, authentication configuration and storage safety.
+`/api/health` is process liveness only. `/api/ready` also checks schema, authentication configuration and storage safety, and reports `storage_mode` (`postgres`, `persistent_sqlite` or `ephemeral_sqlite`).
 
 ## Canonical observation
 
@@ -198,9 +212,9 @@ See [docs/openapi.yaml](docs/openapi.yaml) for the full contract.
 
 ## Supported scope
 
-The signal taxonomy is cross-industry. The embedded deployment is intended for a controlled, single-instance pilot of roughly 25,000–50,000 monitored companies, subject to observation volume and retention. Use cheap broad sources for the universe, then promote qualified accounts into costlier ads, social, review and first-party monitoring.
+The signal taxonomy is cross-industry. The deployment is intended for a controlled pilot of roughly 25,000–50,000 monitored companies, subject to observation volume and retention. Use cheap broad sources for the universe, then promote qualified accounts into costlier ads, social, review and first-party monitoring.
 
-Before horizontal scaling, move operational data to Postgres, schedules to durable workers, rate limiting to a shared store, raw payloads to governed object storage, and API-key distribution to short-lived tenant credentials.
+Operational data already lives in managed Postgres. Before horizontal scaling, move schedules to durable workers, rate limiting to a shared store, raw payloads to governed object storage, and API-key distribution to short-lived tenant credentials.
 
 ## Repository map
 
@@ -211,14 +225,14 @@ artifacts/api-server/radar-core/
   src/app.js            createApp(db, { serveStaticAssets }) – the HTTP handler the host mounts
   src/server.js         Bare node:http entry point (not used by the host)
   src/connectors/       Provider collectors and normalizers
-  src/db/               SQLite schema, migrations and database boundary
+  src/db/               Database boundary (index.js), Postgres worker bridge, SQLite driver, schema, migrations and manifest
   src/http/             Routing, I/O and security controls
   src/services/         Resolution, ingestion, scoring, outcomes and queries
   test/                 Domain, normalizer and hardening tests
 artifacts/api-server/
   src/app.ts            Express host: Clerk session bridge and radar mount
   config/               Catalog and scoring files read by the bundled runtime
-  data/                 Local SQLite database (git-ignored)
+  data/                 SQLite fallback database when DATABASE_URL is unset (git-ignored)
 artifacts/hookpoint-radar/ Operator console (React + Vite + Clerk)
 ```
 

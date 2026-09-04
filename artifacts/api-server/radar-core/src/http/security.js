@@ -54,8 +54,8 @@ export function authenticate(db, req, { publicRoute = false } = {}) {
     if (!db.get('SELECT id FROM tenants WHERE id=?', [tenantId])) {
       const now = nowIso();
       db.run(
-        `INSERT OR IGNORE INTO tenants(id, name, slug, settings_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tenants(id, name, slug, settings_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
         [tenantId, 'Private workspace', `clerk-${sha256(tenantId).slice(0, 24)}`, stableJson({ workspaceType: 'private' }), now, now]
       );
       syncConnectorCatalog(db, tenantId, now);

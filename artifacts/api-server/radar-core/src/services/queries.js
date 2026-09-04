@@ -1,4 +1,4 @@
-import { AppError, escapeCsv, json } from '../lib.js';
+import { AppError, daysAgo, escapeCsv, json } from '../lib.js';
 import { config } from '../config.js';
 
 export function dashboardSummary(db, tenantId) {
@@ -7,13 +7,13 @@ export function dashboardSummary(db, tenantId) {
     SUM(CASE WHEN opportunity_tier='hot' AND status NOT IN ('rejected','customer','lost','disqualified') THEN 1 ELSE 0 END) hot,
     SUM(CASE WHEN opportunity_tier='warm' AND status NOT IN ('rejected','customer','lost','disqualified') THEN 1 ELSE 0 END) warm,
     SUM(CASE WHEN opportunity_tier='watch' AND status NOT IN ('rejected','customer','lost','disqualified') THEN 1 ELSE 0 END) watch,
-    ROUND(AVG(opportunity_score), 1) average_score
+    ROUND(CAST(AVG(opportunity_score) AS NUMERIC), 1) average_score
     FROM companies WHERE tenant_id=?`, [tenantId]);
   const activeSignals = db.get(`SELECT COUNT(*) count FROM signals WHERE tenant_id=? AND status='active'`, [tenantId]);
   const newSignals = db.get(`SELECT COUNT(*) count FROM signals WHERE tenant_id=? AND status='active'
-    AND last_seen_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 day')`, [tenantId]);
+    AND last_seen_at >= ?`, [tenantId, daysAgo(7)]);
   const configured = db.get(`SELECT SUM(configured) configured, SUM(enabled) enabled, COUNT(*) total FROM connectors WHERE tenant_id=?`, [tenantId]);
-  const topIndustries = db.all(`SELECT industry, COUNT(*) companies, ROUND(AVG(opportunity_score),1) average_score
+  const topIndustries = db.all(`SELECT industry, COUNT(*) companies, ROUND(CAST(AVG(opportunity_score) AS NUMERIC), 1) average_score
     FROM companies WHERE tenant_id=? GROUP BY industry ORDER BY average_score DESC, companies DESC LIMIT 8`, [tenantId]);
   const tiers = db.all(`SELECT opportunity_tier tier, COUNT(*) count FROM companies
     WHERE tenant_id=? AND status NOT IN ('rejected','customer','lost','disqualified') GROUP BY opportunity_tier`, [tenantId]);
@@ -51,8 +51,8 @@ export function listCompanies(db, tenantId, query = {}) {
     where.push('opportunity_score >= ?'); params.push(score);
   }
   if (query.q) {
-    where.push(`(name LIKE ? ESCAPE '\\' OR domain LIKE ? ESCAPE '\\' OR industry LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\')`);
-    const needle = `%${escapeLike(String(query.q).slice(0, 100))}%`;
+    where.push(`(LOWER(name) LIKE ? ESCAPE '\\' OR LOWER(domain) LIKE ? ESCAPE '\\' OR LOWER(industry) LIKE ? ESCAPE '\\' OR LOWER(city) LIKE ? ESCAPE '\\')`);
+    const needle = `%${escapeLike(String(query.q).slice(0, 100).toLowerCase())}%`;
     params.push(needle, needle, needle, needle);
   }
   const allowedSort = new Set(['opportunity_score','updated_at','name','last_observed_at','fit_score']);
@@ -151,25 +151,25 @@ export function exportCompaniesCsv(db, tenantId, query = {}) {
 
 export function dataQuality(db, tenantId) {
   const observations = db.get(`SELECT COUNT(*) total,
-      COALESCE(SUM(CASE WHEN ingested_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day') THEN 1 ELSE 0 END),0) ingested_24h,
-      COALESCE(SUM(CASE WHEN ingested_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 day') THEN 1 ELSE 0 END),0) ingested_7d,
-      COALESCE(ROUND(AVG(confidence),3),0) average_confidence
-    FROM observations WHERE tenant_id=?`, [tenantId]);
+      COALESCE(SUM(CASE WHEN ingested_at>=? THEN 1 ELSE 0 END),0) ingested_24h,
+      COALESCE(SUM(CASE WHEN ingested_at>=? THEN 1 ELSE 0 END),0) ingested_7d,
+      COALESCE(ROUND(CAST(AVG(confidence) AS NUMERIC), 3),0) average_confidence
+    FROM observations WHERE tenant_id=?`, [daysAgo(1), daysAgo(7), tenantId]);
   const rejections = db.get(`SELECT COUNT(*) total,
-      COALESCE(SUM(CASE WHEN created_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 day') THEN 1 ELSE 0 END),0) rejected_24h,
-      COALESCE(SUM(CASE WHEN created_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 day') THEN 1 ELSE 0 END),0) rejected_7d
-    FROM ingestion_rejections WHERE tenant_id=?`, [tenantId]);
+      COALESCE(SUM(CASE WHEN created_at>=? THEN 1 ELSE 0 END),0) rejected_24h,
+      COALESCE(SUM(CASE WHEN created_at>=? THEN 1 ELSE 0 END),0) rejected_7d
+    FROM ingestion_rejections WHERE tenant_id=?`, [daysAgo(1), daysAgo(7), tenantId]);
   const identity = db.get(`SELECT COUNT(*) companies,
       COALESCE(SUM(CASE WHEN domain IS NULL THEN 1 ELSE 0 END),0) missing_domain,
       COALESCE(SUM(CASE WHEN identity_confidence<0.8 THEN 1 ELSE 0 END),0) needs_review,
-      COALESCE(ROUND(AVG(identity_confidence),3),0) average_confidence
+      COALESCE(ROUND(CAST(AVG(identity_confidence) AS NUMERIC), 3),0) average_confidence
     FROM companies WHERE tenant_id=?`, [tenantId]);
   const stale = db.get(`SELECT COUNT(*) count FROM companies WHERE tenant_id=? AND
-    (last_observed_at IS NULL OR last_observed_at<strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 day'))`, [tenantId]);
+    (last_observed_at IS NULL OR last_observed_at<?)`, [tenantId, daysAgo(30)]);
   const sourceFreshness = db.all(`SELECT source, COUNT(*) observations, MAX(observed_at) latest_observation,
       MAX(COALESCE(retrieved_at, ingested_at)) latest_retrieval,
-      ROUND(AVG(confidence),3) average_confidence,
-      ROUND(100.0 * SUM(CASE WHEN event_time_quality='retrieval_time' THEN 1 ELSE 0 END) / COUNT(*),1) retrieval_time_pct
+      ROUND(CAST(AVG(confidence) AS NUMERIC), 3) average_confidence,
+      ROUND(CAST(100.0 * SUM(CASE WHEN event_time_quality='retrieval_time' THEN 1 ELSE 0 END) / COUNT(*) AS NUMERIC), 1) retrieval_time_pct
     FROM observations WHERE tenant_id=? GROUP BY source ORDER BY latest_retrieval DESC`, [tenantId]);
   const connectorHealth = db.get(`SELECT
       SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) errors,

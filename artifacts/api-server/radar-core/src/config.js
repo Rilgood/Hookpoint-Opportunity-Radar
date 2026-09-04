@@ -29,7 +29,12 @@ const boolean = (value, fallback = false) => {
 
 const databaseSetting = process.env.DATABASE_PATH || './data/hookpoint-radar.sqlite';
 const databasePath = databaseSetting === ':memory:' ? ':memory:' : path.resolve(rootDir, databaseSetting);
-const isEphemeralDatabase = databasePath === ':memory:' || databasePath === '/tmp' || databasePath.startsWith('/tmp/');
+// A Postgres URL (Replit injects DATABASE_URL for its managed database) takes
+// precedence over the embedded SQLite file: it is the only store that survives
+// restarts and scale-out of the published API.
+const databaseUrl = /^postgres(ql)?:\/\//i.test(String(process.env.DATABASE_URL || '')) ? String(process.env.DATABASE_URL).trim() : '';
+const isEphemeralDatabase = !databaseUrl && (databasePath === ':memory:' || databasePath === '/tmp' || databasePath.startsWith('/tmp/'));
+const storageMode = databaseUrl ? 'postgres' : (isEphemeralDatabase ? 'ephemeral_sqlite' : 'persistent_sqlite');
 
 export const config = Object.freeze({
   rootDir,
@@ -37,10 +42,21 @@ export const config = Object.freeze({
   host: process.env.HOST || '0.0.0.0',
   port: Number(process.env.PORT || 8787),
   databasePath,
-  storageMode: isEphemeralDatabase ? 'ephemeral_sqlite' : 'persistent_sqlite',
+  databaseUrl,
+  databaseTarget: databaseUrl || databasePath,
+  databaseSchema: String(process.env.RADAR_DB_SCHEMA || 'radar').trim(),
+  databaseStatementTimeoutMs: Number(process.env.DB_STATEMENT_TIMEOUT_MS || 30_000),
+  // Schema ownership: outside production the process applies schema.js and
+  // pending migrations on start. In production the publish flow copies the
+  // development schema to the production database, so the process only
+  // verifies it (see src/db/index.js) and never issues DDL.
+  manageSchema: process.env.NODE_ENV !== 'production',
+  storageMode,
   isEphemeralDatabase,
   allowEphemeralStorage: boolean(process.env.ALLOW_EPHEMERAL_STORAGE, process.env.NODE_ENV !== 'production'),
-  durableStorageConfirmed: boolean(process.env.DURABLE_STORAGE_CONFIRMED, process.env.NODE_ENV !== 'production'),
+  // Managed Postgres is durable by construction; the confirmation flag only
+  // guards SQLite files, whose durability depends on where they are mounted.
+  durableStorageConfirmed: Boolean(databaseUrl) || boolean(process.env.DURABLE_STORAGE_CONFIRMED, process.env.NODE_ENV !== 'production'),
   logLevel: process.env.LOG_LEVEL || 'info',
   authRequired: boolean(process.env.AUTH_REQUIRED, process.env.NODE_ENV === 'production'),
   defaultTenantId: process.env.DEFAULT_TENANT_ID || 'tenant_hookpoint',
@@ -73,7 +89,11 @@ export function runtimeIssues(db) {
   if (config.webhookSecret && config.webhookSecret.length < 32) issues.push({ code: 'weak_webhook_secret', severity: 'critical', message: 'CONNECTOR_WEBHOOK_SECRET must contain at least 32 characters.' });
   if (config.env === 'production' && config.isEphemeralDatabase && !config.allowEphemeralStorage) issues.push({ code: 'ephemeral_storage', severity: 'critical', message: 'Durable storage is required before production ingestion.' });
   if (config.env === 'production' && !config.isEphemeralDatabase && !config.durableStorageConfirmed) issues.push({ code: 'durability_unconfirmed', severity: 'critical', message: 'Set DURABLE_STORAGE_CONFIRMED=true only after verifying the database path is on a backed-up durable volume.' });
-  if (config.authRequired && db) {
+  if (db?.schemaStatus && !db.schemaStatus.ok) issues.push({ code: 'schema_out_of_date', severity: 'critical', message: `The database schema is behind migration ${db.schemaStatus.expectedVersion} (missing ${db.schemaStatus.missing.slice(0, 3).join(', ')}${db.schemaStatus.missing.length > 3 ? ', …' : ''}). Publish again so the development schema is applied to production.` });
+  // Every check below reads application tables; skip them while the schema is
+  // behind so a missing table reports schema_out_of_date instead of a 500.
+  const schemaUsable = !db?.schemaStatus || db.schemaStatus.ok;
+  if (config.authRequired && db && schemaUsable) {
     const count = db.get('SELECT COUNT(*) count FROM api_keys WHERE revoked_at IS NULL')?.count || 0;
     if (!count) issues.push({ code: 'no_active_api_key', severity: 'critical', message: 'Configure ADMIN_API_KEY or provision an API key before use.' });
   }

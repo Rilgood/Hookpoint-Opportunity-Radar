@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { addDays, AppError, hmac, id, nowIso, safeEqual, sha256 } from '../lib.js';
+import { isUniqueViolation } from '../db/index.js';
 
 const replayWindowMs = 5 * 60_000;
 
@@ -30,7 +31,7 @@ export function consumeWebhookReceipt(db, tenantId, receipt, now = nowIso()) {
     db.run(`INSERT INTO webhook_receipts(id, tenant_id, signature_hash, received_at, expires_at)
       VALUES (?, ?, ?, ?, ?)`, [id('webhook'), tenantId, receipt.signatureHash, now, addDays(now, 10 / 1_440)]);
   } catch (error) {
-    if (String(error.message).includes('UNIQUE constraint failed')) {
+    if (isUniqueViolation(error)) {
       throw new AppError(409, 'webhook_replayed', 'This signed webhook request has already been processed.');
     }
     throw error;

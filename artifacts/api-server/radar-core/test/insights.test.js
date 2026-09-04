@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openDatabase } from '../src/db/index.js';
+import { openTestDatabase } from './helpers/database.js';
 import { bootstrap } from '../src/services/bootstrap.js';
 import { ingestOne } from '../src/services/ingestion.js';
 import { recordOutcome } from '../src/services/outcomes.js';
@@ -10,7 +10,7 @@ import { analyticsInsights, companyInsights } from '../src/services/insights.js'
 import { config } from '../src/config.js';
 
 function setup() {
-  const db = openDatabase(':memory:');
+  const db = openTestDatabase();
   bootstrap(db);
   return db;
 }
@@ -77,9 +77,10 @@ test('analytics uses earliest labels, sample guardrails, priorities, and tenant 
   const second = launch(db, 'Hidden Win', 'hidden.example');
   db.run(`UPDATE companies SET opportunity_score=20, opportunity_tier='cold' WHERE id=?`, [second.company.id]);
   recordOutcome(db, config.defaultTenantId, second.company.id, { outcome_type: 'meeting' });
-  db.run(`INSERT INTO tenants(id,name,slug,created_at,updated_at) VALUES ('tenant-other','Other','other',datetime('now'),datetime('now'))`);
+  const stamp = new Date().toISOString();
+  db.run(`INSERT INTO tenants(id,name,slug,created_at,updated_at) VALUES ('tenant-other','Other','other',?,?)`, [stamp, stamp]);
   db.run(`INSERT INTO companies(id,tenant_id,name,normalized_name,domain,created_at,updated_at)
-    VALUES ('other-company','tenant-other','Other Secret','other secret','other.example',datetime('now'),datetime('now'))`);
+    VALUES ('other-company','tenant-other','Other Secret','other secret','other.example',?,?)`, [stamp, stamp]);
   const analytics = analyticsInsights(db, config.defaultTenantId);
   assert.deepEqual(analytics.base_rate, { labeled: 2, qualified: 1, negative: 1, qualified_rate: 50 });
   assert.equal(analytics.signal_effectiveness[0].verdict, 'insufficient');

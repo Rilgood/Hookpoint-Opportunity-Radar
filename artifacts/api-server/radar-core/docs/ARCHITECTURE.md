@@ -105,17 +105,17 @@ Start broad with cheap sources. Spend on ads, social, traffic and enrichment onl
 
 ## Deployment scope
 
-The included SQLite/WAL database is suitable for a controlled single-instance service with a durable volume, backups and restore tests. It is not suitable for Vercel function-local storage or multiple concurrent replicas.
+Operational data lives in managed Postgres (`DATABASE_URL`, schema `radar`) behind the synchronous `src/db/` boundary; SQLite remains the engine for tests and offline development. The store is shared by every API instance, so restarts and new autoscale instances keep the data. Production never applies DDL: the schema is copied by the publish flow and verified against `src/db/schema-manifest.js` at startup.
 
 Scale replacements should preserve the canonical observation and API contracts:
 
 | Included component | Scale replacement |
 |---|---|
-| SQLite/WAL | Neon/Postgres operational store |
+| Worker-bridged synchronous Postgres client | Async pooled client once the services stop assuming synchronous calls |
 | In-process scheduler | Vercel Cron/Queues, Temporal or managed workers |
 | In-memory rate limit | Upstash Redis or gateway limit |
 | Local raw references | Governed object storage |
 | Long-lived API keys | SSO plus short-lived tenant credentials |
 | Direct rescoring | Queue-backed workers and batch analytics |
 
-The Vercel adapter intentionally fails readiness when it detects ephemeral production storage. This prevents a successful-looking connector run from writing records that disappear after a cold start.
+Readiness intentionally fails when production storage is ephemeral (a SQLite fallback on autoscale) or when the Postgres schema is behind the code. This prevents a successful-looking connector run from writing records that disappear after a cold start or that the code cannot read.

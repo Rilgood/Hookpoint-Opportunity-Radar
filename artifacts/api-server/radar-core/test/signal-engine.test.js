@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openDatabase } from '../src/db/index.js';
+import { openTestDatabase } from './helpers/database.js';
 import { bootstrap } from '../src/services/bootstrap.js';
 import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
 import { companyDetail } from '../src/services/queries.js';
@@ -8,7 +8,7 @@ import { config } from '../src/config.js';
 import { approveScoreCalibration, evaluateScoreCalibration, outcomeAnalytics, recordOutcome } from '../src/services/outcomes.js';
 import { activeScoringConfig } from '../src/services/catalog.js';
 
-function setup() { const db = openDatabase(':memory:'); bootstrap(db); return db; }
+function setup() { const db = openTestDatabase(); bootstrap(db); return db; }
 function addCompany(db, tenantId, companyId, score) {
   const now = new Date().toISOString();
   db.run(`INSERT INTO companies(id, tenant_id, name, normalized_name, domain, opportunity_score, created_at, updated_at)

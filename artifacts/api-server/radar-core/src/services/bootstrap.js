@@ -7,8 +7,8 @@ export function bootstrap(db, { withAdminKey = true } = {}) {
   const now = nowIso();
   const staleRunCutoff = new Date(Date.now() - Math.max(config.connectorTimeoutMs * 2, 10 * 60_000)).toISOString();
   db.run(
-    `INSERT OR IGNORE INTO tenants(id, name, slug, settings_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tenants(id, name, slug, settings_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
     [config.defaultTenantId, 'Hook Point', 'hook-point', stableJson({ brand: 'Hook Point × Hyper Ads', scoreVersion: 'rules-1.1' }), now, now]
   );
 
@@ -40,10 +40,10 @@ export function syncConnectorCatalog(db, tenantId, now = nowIso()) {
       : requiredEnvironment(item).every((name) => configuredValue(name));
     const status = configured ? 'disabled' : 'needs_configuration';
     db.run(
-      `INSERT OR IGNORE INTO connectors(
+      `INSERT INTO connectors(
         id, tenant_id, connector_key, label, category, provider, mode, cadence,
         enabled, configured, status, config_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
       [id('con'), tenantId, item.key, item.label, item.category, item.provider, item.mode,
         item.cadence, 0, configured ? 1 : 0, status, stableJson({ costTier: item.costTier, keyEnv: item.keyEnv, actorEnv: item.actorEnv }), now, now]
     );
