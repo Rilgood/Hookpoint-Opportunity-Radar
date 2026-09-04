@@ -9,13 +9,13 @@ import { scoringConfig, signalCatalog } from './services/catalog.js';
 import { implementedConnectorKeys } from './connectors/index.js';
 import { runConnector, setConnectorEnabled } from './services/connector-runner.js';
 import { recordAudit } from './services/audit.js';
-import { outcomeAnalytics, recordOutcome } from './services/outcomes.js';
 import { createApiKey, listApiKeys, revokeApiKey } from './services/api-keys.js';
 import { consumeWebhookReceipt, verifyWebhook } from './services/webhooks.js';
 import { Router } from './http/router.js';
 import { readBody, sendJson, sendText, serveStatic } from './http/io.js';
 import { authenticate, enforceRateLimit, requireScope, securityHeaders } from './http/security.js';
 import { observationTypes } from './observation-contract.js';
+import { approveScoreCalibration, evaluateScoreCalibration, outcomeAnalytics, recordOutcome } from './services/outcomes.js';
 
 export function createApp(db, { serveStaticAssets = true } = {}) {
   bootstrap(db);
@@ -158,6 +158,18 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
   router.get('/api/v1/analytics/outcomes', async ({ auth }) => {
     requireScope(auth, 'read');
     return outcomeAnalytics(db, auth.tenantId);
+  });
+  router.post('/api/v1/analytics/outcomes/evaluate', async ({ auth, requestId }) => {
+    requireScope(auth, 'admin');
+    const evaluation = db.transaction(() => evaluateScoreCalibration(db, auth.tenantId, auth.actor));
+    recordAudit(db, auth.tenantId, { action: 'scoring.evaluation_created', actor: auth.actor, resourceType: 'scoring_version', resourceId: evaluation.recommendation?.id || 'blocked', requestId, details: { status: evaluation.status } });
+    return evaluation;
+  });
+  router.post('/api/v1/analytics/outcomes/recommendations/:id/approve', async ({ auth, params, requestId }) => {
+    requireScope(auth, 'admin');
+    const approved = db.transaction(() => approveScoreCalibration(db, auth.tenantId, params.id, auth.actor));
+    recordAudit(db, auth.tenantId, { action: 'scoring.version_approved', actor: auth.actor, resourceType: 'scoring_version', resourceId: approved.id, requestId, details: { version: approved.version } });
+    return approved;
   });
   router.get('/api/v1/data-quality', async ({ auth }) => dataQuality(db, auth.tenantId));
   router.get('/api/v1/ingestion/rejections', async ({ auth, query }) => {

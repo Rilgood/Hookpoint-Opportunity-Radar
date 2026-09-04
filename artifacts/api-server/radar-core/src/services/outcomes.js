@@ -1,13 +1,11 @@
-import { AppError, id, isPlainObject, json, nowIso, redactSecrets, stableJson } from '../lib.js';
+import { AppError, id, isPlainObject, json, nowIso, redactSecrets, round, stableJson } from '../lib.js';
 import { config } from '../config.js';
-import { scoringConfig } from './catalog.js';
+import { activeScoringConfig, scoringConfig } from './catalog.js';
 
 const types = new Set(['accepted','rejected','contacted','positive_reply','negative_reply','meeting','opportunity','won','lost','disqualified','suppression_correct','suppression_wrong']);
 const statusByOutcome = { accepted: 'accepted', rejected: 'rejected', contacted: 'contacted', positive_reply: 'replied', negative_reply: 'contacted', meeting: 'meeting', opportunity: 'opportunity', won: 'customer', lost: 'lost', disqualified: 'disqualified' };
 const qualifiedOutcomes = new Set(['meeting', 'opportunity', 'won']);
 const calibrationBands = ['hot', 'warm', 'watch', 'cold'];
-const calibrationMinimumSample = 30;
-const calibrationMinEachClass = 10;
 
 function roundPercent(value) {
   if (!Number.isFinite(value)) return 0;
@@ -67,6 +65,8 @@ export function recordOutcome(db, tenantId, companyId, input, actor = 'operator'
 }
 
 export function outcomeAnalytics(db, tenantId) {
+  const activeConfig = activeScoringConfig(db, tenantId);
+  const policy = activeConfig.calibrationPolicy || scoringConfig.calibrationPolicy;
   const totals = db.all(`SELECT outcome_type, COUNT(*) count, COALESCE(SUM(amount),0) amount FROM outcomes WHERE tenant_id=? GROUP BY outcome_type ORDER BY count DESC`, [tenantId]);
   const scoreBands = db.all(`SELECT
       CASE WHEN score_at_outcome>=? THEN 'hot' WHEN score_at_outcome>=? THEN 'warm' WHEN score_at_outcome>=? THEN 'watch' ELSE 'cold' END score_band,
@@ -125,13 +125,130 @@ export function outcomeAnalytics(db, tenantId) {
         labeled_accounts: labeledAccounts,
         qualified_accounts: qualifiedAccounts,
         negative_accounts: negativeAccounts,
-        minimum_sample: calibrationMinimumSample,
-        min_each_class: calibrationMinEachClass,
-        sufficient_sample: labeledAccounts >= calibrationMinimumSample && qualifiedAccounts >= calibrationMinEachClass && negativeAccounts >= calibrationMinEachClass,
+        minimum_sample: policy.minimumSample,
+        min_each_class: policy.minEachClass,
+        sufficient_sample: labeledAccounts >= policy.minimumSample && qualifiedAccounts >= policy.minEachClass && negativeAccounts >= policy.minEachClass,
         cohort_note: 'Results cover only accounts with a qualifying or negative outcome label; they are observational and do not establish causality.',
         recommendation: 'Use this calibration to monitor lead quality only; do not change score weights from these results alone.'
       },
       score_bands: calibrationScoreBands
     }
   };
+}
+
+export function evaluateScoreCalibration(db, tenantId, actor) {
+  const activeConfig = activeScoringConfig(db, tenantId);
+  const policy = activeConfig.calibrationPolicy || scoringConfig.calibrationPolicy;
+  const labels = firstOutcomeLabels(db, tenantId);
+  const holdoutSize = Math.ceil(labels.length * policy.holdoutFraction);
+  const holdout = labels.slice(-holdoutSize);
+  const training = labels.slice(0, -holdoutSize);
+  const qualified = holdout.filter((row) => qualifiedOutcomes.has(row.outcome_type)).length;
+  const negative = holdout.length - qualified;
+  const trainingQualified = training.filter((row) => qualifiedOutcomes.has(row.outcome_type)).length;
+  const trainingNegative = training.length - trainingQualified;
+  const guardrails = {
+    cohort: `Most recent ${Math.round(policy.holdoutFraction * 100)}% of first qualifying or negative labels, held out from the proposal calculation.`,
+    holdout_accounts: holdout.length,
+    qualified_accounts: qualified,
+    negative_accounts: negative,
+    minimum_sample: policy.minimumSample,
+    min_each_class: policy.minEachClass,
+    training_accounts: training.length,
+    training_qualified_accounts: trainingQualified,
+    training_negative_accounts: trainingNegative,
+    minimum_training_sample: policy.minimumTrainingSample,
+    min_training_each_class: policy.minTrainingEachClass
+  };
+  if (holdout.length < policy.minimumSample || qualified < policy.minEachClass || negative < policy.minEachClass
+    || training.length < policy.minimumTrainingSample || trainingQualified < policy.minTrainingEachClass || trainingNegative < policy.minTrainingEachClass) {
+    return { status: 'blocked', guardrails, reason: `Holdout needs ${policy.minimumSample} labels with ${policy.minEachClass} qualified and ${policy.minEachClass} negative outcomes; training needs ${policy.minimumTrainingSample} labels with ${policy.minTrainingEachClass} in each class.` };
+  }
+  const trainingRows = training.map((label) => ({ ...label, snapshot: snapshotAtOutcome(db, tenantId, label) })).filter((row) => row.snapshot);
+  const holdoutRows = holdout.map((label) => ({ ...label, snapshot: snapshotAtOutcome(db, tenantId, label) })).filter((row) => row.snapshot);
+  if (trainingRows.length !== training.length || holdoutRows.length !== holdout.length) {
+    return { status: 'blocked', guardrails: { ...guardrails, scored_training_accounts: trainingRows.length, scored_holdout_accounts: holdoutRows.length }, reason: 'Every training and holdout label needs a historic score snapshot. Rescore and collect new labeled outcomes before evaluating.' };
+  }
+  const baseline = activeConfig.dimensionWeights;
+  const proposed = proposeWeights(trainingRows, baseline, policy.maxWeightShift);
+  const before = evaluationMetrics(holdoutRows, baseline);
+  const after = evaluationMetrics(holdoutRows, proposed);
+  if (after.auc - before.auc < policy.minimumAucLift) {
+    return { status: 'blocked', guardrails, reason: `The candidate did not improve holdout discrimination by the required ${(policy.minimumAucLift * 100).toFixed(0)} percentage point AUC margin.`, before, after };
+  }
+  const version = `${activeConfig.version}-cal-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}`;
+  const uniqueVersion = db.get('SELECT id FROM scoring_versions WHERE tenant_id=? AND version=?', [tenantId, version]);
+  if (uniqueVersion) return { status: 'ready', recommendation: scoringVersion(db, tenantId, uniqueVersion.id) };
+  const candidate = { ...activeConfig, version, dimensionWeights: proposed };
+  const evaluation = { guardrails, before, after, explanation: weightExplanation(baseline, proposed) };
+  const createdAt = nowIso();
+  const recommendationId = id('score_version');
+  db.run(`INSERT INTO scoring_versions(id, tenant_id, version, status, base_version, config_json, evaluation_json, created_at, created_by)
+    VALUES (?, ?, ?, 'proposed', ?, ?, ?, ?, ?)`, [recommendationId, tenantId, version, activeConfig.version,
+    stableJson(candidate), stableJson(evaluation), createdAt, actor]);
+  return { status: 'ready', recommendation: scoringVersion(db, tenantId, recommendationId) };
+}
+
+export function approveScoreCalibration(db, tenantId, recommendationId, actor) {
+  const proposal = db.get(`SELECT * FROM scoring_versions WHERE tenant_id=? AND id=?`, [tenantId, recommendationId]);
+  if (!proposal) throw new AppError(404, 'score_recommendation_not_found', 'Score recommendation not found.');
+  if (proposal.status !== 'proposed') throw new AppError(409, 'score_recommendation_not_pending', 'Only a pending score recommendation can be approved.');
+  const latest = activeScoringConfig(db, tenantId);
+  if (proposal.base_version !== latest.version) throw new AppError(409, 'score_recommendation_stale', 'This recommendation was evaluated against an older scoring version. Run a new evaluation.');
+  const now = nowIso();
+  db.run(`UPDATE scoring_versions SET status='superseded' WHERE tenant_id=? AND status='approved'`, [tenantId]);
+  db.run(`UPDATE scoring_versions SET status='approved', approved_at=?, approved_by=? WHERE id=?`, [now, actor, recommendationId]);
+  return scoringVersion(db, tenantId, recommendationId);
+}
+
+function firstOutcomeLabels(db, tenantId) {
+  const events = db.all(`SELECT company_id, outcome_type, score_at_outcome, occurred_at, created_at, id FROM outcomes
+    WHERE tenant_id=? AND outcome_type IN ('meeting', 'opportunity', 'won', 'lost', 'disqualified')
+    ORDER BY company_id ASC, occurred_at ASC, created_at ASC, id ASC`, [tenantId]);
+  const first = new Map();
+  for (const event of events) if (!first.has(event.company_id)) first.set(event.company_id, event);
+  return [...first.values()].sort((a, b) => a.occurred_at.localeCompare(b.occurred_at) || a.id.localeCompare(b.id));
+}
+
+function snapshotAtOutcome(db, tenantId, outcome) {
+  return db.get(`SELECT fit_score, need_score, intent_score, timing_score, opportunity_score FROM score_snapshots
+    WHERE tenant_id=? AND company_id=? AND computed_at<=? ORDER BY computed_at DESC, id DESC LIMIT 1`,
+  [tenantId, outcome.company_id, outcome.occurred_at]);
+}
+
+function proposeWeights(rows, baseline, maxShift) {
+  const keys = ['fit', 'need', 'intent', 'timing'];
+  const mean = (items, key) => items.reduce((sum, item) => sum + Number(item.snapshot[`${key}_score`]), 0) / items.length;
+  const positive = rows.filter((row) => qualifiedOutcomes.has(row.outcome_type));
+  const negative = rows.filter((row) => !qualifiedOutcomes.has(row.outcome_type));
+  const effects = Object.fromEntries(keys.map((key) => [key, (mean(positive, key) - mean(negative, key)) / 100]));
+  const averageEffect = keys.reduce((sum, key) => sum + effects[key], 0) / keys.length;
+  const raw = Object.fromEntries(keys.map((key) => [key, baseline[key] + Math.max(-maxShift, Math.min(maxShift, (effects[key] - averageEffect) * maxShift))]));
+  const total = keys.reduce((sum, key) => sum + raw[key], 0);
+  return Object.fromEntries(keys.map((key) => [key, round(raw[key] / total, 4)]));
+}
+
+function evaluationMetrics(rows, weights) {
+  const scored = rows.map((row) => ({ qualified: qualifiedOutcomes.has(row.outcome_type), score: ['fit', 'need', 'intent', 'timing']
+    .reduce((sum, key) => sum + Number(row.snapshot[`${key}_score`]) * weights[key], 0) }));
+  const positives = scored.filter((row) => row.qualified);
+  const negatives = scored.filter((row) => !row.qualified);
+  let wins = 0;
+  for (const positive of positives) for (const negative of negatives) wins += positive.score > negative.score ? 1 : positive.score === negative.score ? 0.5 : 0;
+  const ordered = [...scored].sort((a, b) => b.score - a.score);
+  const top = ordered.slice(0, Math.max(1, Math.ceil(ordered.length / 4)));
+  return { auc: round(wins / (positives.length * negatives.length), 3), top_quartile_qualified_rate: round(100 * top.filter((row) => row.qualified).length / top.length, 1) };
+}
+
+function weightExplanation(before, after) {
+  return Object.keys(before).map((dimension) => ({
+    dimension, before: before[dimension], after: after[dimension], change: round(after[dimension] - before[dimension], 4)
+  })).filter((item) => item.change !== 0);
+}
+
+function scoringVersion(db, tenantId, id) {
+  const row = db.get('SELECT * FROM scoring_versions WHERE tenant_id=? AND id=?', [tenantId, id]);
+  if (!row) return null;
+  return { id: row.id, version: row.version, status: row.status, base_version: row.base_version, config: json(row.config_json),
+    evaluation: json(row.evaluation_json), created_at: row.created_at, created_by: row.created_by, approved_at: row.approved_at, approved_by: row.approved_by };
 }

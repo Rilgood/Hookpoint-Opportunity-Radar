@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { config } from '../config.js';
+import { json } from '../lib.js';
 import { observationTypeSet } from '../observation-contract.js';
 
 const read = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -41,7 +42,7 @@ function validateConnectors(items) {
   return items;
 }
 
-function validateScoring(item) {
+export function validateScoring(item) {
   const requiredDimensions = ['fit','need','intent','timing'];
   if (!item.version || !requiredDimensions.every((key) => Object.hasOwn(item.dimensionWeights || {}, key))) throw new Error('Scoring configuration is missing a version or dimension weight.');
   const dimensions = requiredDimensions.map((key) => item.dimensionWeights[key]);
@@ -59,6 +60,11 @@ function validateScoring(item) {
     || !inRange(item.corroboration?.sourceLift, 0, 1) || !inRange(item.corroboration?.evidenceLift, 0, 1)
     || !inRange(item.corroboration?.evidenceLiftLimit, 0, 100) || !inRange(item.evidenceConfidence?.additionalSourceLift, 0, 1)
     || !inRange(item.evidenceConfidence?.maximumRemainingLift, 0, 1)) throw new Error('Scoring confidence or corroboration settings are invalid.');
+  const policy = item.calibrationPolicy || {};
+  if (!inRange(policy.holdoutFraction ?? 0.25, 0.1, 0.5) || !Number.isInteger(policy.minimumSample ?? 30)
+    || !Number.isInteger(policy.minEachClass ?? 10) || !Number.isInteger(policy.minimumTrainingSample ?? 30)
+    || !Number.isInteger(policy.minTrainingEachClass ?? 10) || !inRange(policy.maxWeightShift ?? 0.05, 0.005, 0.1)
+    || !inRange(policy.minimumAucLift ?? 0.01, 0, 0.2)) throw new Error('Scoring calibration policy is invalid.');
   return item;
 }
 
@@ -71,3 +77,9 @@ export const signalByKey = new Map(signalCatalog.map((signal) => [signal.key, si
 export const connectorCatalog = Object.freeze(validateConnectors(read(config.connectorCatalogPath)));
 export const connectorByKey = new Map(connectorCatalog.map((connector) => [connector.key, connector]));
 export const scoringConfig = Object.freeze(validateScoring(read(config.scoringConfigPath)));
+
+export function activeScoringConfig(db, tenantId) {
+  const version = db.get(`SELECT config_json FROM scoring_versions
+    WHERE tenant_id=? AND status='approved' ORDER BY approved_at DESC LIMIT 1`, [tenantId]);
+  return version ? Object.freeze(validateScoring(json(version.config_json))) : scoringConfig;
+}

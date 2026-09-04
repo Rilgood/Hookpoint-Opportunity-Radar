@@ -427,6 +427,7 @@ export interface OutcomeAnalyticsResponse {
   meta: ResponseMeta;
 }
 
+export type ScoreWeightDimension = typeof ScoreWeightDimension[keyof typeof ScoreWeightDimension];
 export interface ObservationCompanyInput {
   name: string;
   domain?: string;
@@ -791,3 +792,96 @@ export type ListRadarReviewQueueParams = {
 limit?: number;
 };
 
+
+export type ScoreVersionEvaluation = {
+  guardrails: ScoreCalibrationGuardrails;
+  before: ScoreMetrics;
+  after: ScoreMetrics;
+  explanation: ScoreWeight[];
+};
+
+export type ScoreCalibrationEvaluationStatus = typeof ScoreCalibrationEvaluationStatus[keyof typeof ScoreCalibrationEvaluationStatus];
+
+export type ScoreVersionStatus = typeof ScoreVersionStatus[keyof typeof ScoreVersionStatus];
+
+export interface ScoreMetrics {
+  auc: number;
+  top_quartile_qualified_rate: number;
+}
+
+export const ScoreWeightDimension = {
+  fit: 'fit',
+  need: 'need',
+  intent: 'intent',
+  timing: 'timing',
+} as const;
+
+export interface ScoreCalibrationGuardrails {
+  cohort: string;
+  holdout_accounts: number;
+  qualified_accounts: number;
+  negative_accounts: number;
+  minimum_sample: number;
+  min_each_class: number;
+  training_accounts: number;
+  training_qualified_accounts: number;
+  training_negative_accounts: number;
+  minimum_training_sample: number;
+  min_training_each_class: number;
+  scored_holdout_accounts?: number;
+  scored_training_accounts?: number;
+}
+
+export const ScoreVersionStatus = {
+  proposed: 'proposed',
+  approved: 'approved',
+  superseded: 'superseded',
+} as const;
+
+export interface ScoreVersion {
+  id: string;
+  version: string;
+  status: ScoreVersionStatus;
+  base_version: string;
+  config: ScoreVersionConfig;
+  evaluation: ScoreVersionEvaluation;
+  created_at: string;
+  created_by: string;
+  /** @nullable */
+  approved_at?: string | null;
+  /** @nullable */
+  approved_by?: string | null;
+}
+
+export interface ScoreVersionResponse {
+  data: ScoreVersion;
+  meta: ResponseMeta;
+}
+
+export interface ScoreCalibrationEvaluationResponse {
+  data: ScoreCalibrationEvaluation;
+  meta: ResponseMeta;
+}
+
+export interface ScoreCalibrationEvaluation {
+  status: ScoreCalibrationEvaluationStatus;
+  reason?: string;
+  guardrails: ScoreCalibrationGuardrails;
+  before?: ScoreMetrics;
+  after?: ScoreMetrics;
+  recommendation?: ScoreVersion;
+}
+
+export type ScoreVersionConfig = { [key: string]: unknown };
+
+export const ScoreCalibrationEvaluationStatus = {
+  blocked: 'blocked',
+  ready: 'ready',
+} as const;
+
+export interface ScoreWeight {
+  dimension: ScoreWeightDimension;
+  before: number;
+  after: number;
+  change: number;
+}

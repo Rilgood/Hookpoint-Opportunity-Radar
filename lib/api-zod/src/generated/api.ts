@@ -60,7 +60,6 @@ export const listRadarCompaniesQueryMinScoreMax = 100;
 export const listRadarCompaniesQueryLimitMax = 200;
 
 
-
 export const ListRadarCompaniesQueryParams = zod.object({
   "tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']).optional(),
   "q": zod.coerce.string().optional(),
@@ -351,8 +350,6 @@ export const SeparateRadarCompanyIdentityParams = zod.object({
 })
 
 
-
-
 export const SeparateRadarCompanyIdentityBody = zod.object({
   "name": zod.string(),
   "alias_ids": zod.array(zod.string()).min(1),
@@ -392,7 +389,6 @@ export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsItemNegati
 
 export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMin = 4;
 export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMax = 4;
-
 
 
 export const GetRadarOutcomeAnalyticsResponse = zod.object({
@@ -445,7 +441,84 @@ export const GetRadarOutcomeAnalyticsResponse = zod.object({
 })
 })
 
-
+/**
+ * @summary Evaluate a guarded score-weight recommendation on a recent holdout cohort
+ */
+export const EvaluateRadarScoreCalibrationResponse = zod.object({
+  "data": zod.object({
+  "status": zod.enum(['blocked', 'ready']),
+  "reason": zod.string().optional(),
+  "guardrails": zod.object({
+  "cohort": zod.string(),
+  "holdout_accounts": zod.number(),
+  "qualified_accounts": zod.number(),
+  "negative_accounts": zod.number(),
+  "minimum_sample": zod.number(),
+  "min_each_class": zod.number(),
+  "training_accounts": zod.number(),
+  "training_qualified_accounts": zod.number(),
+  "training_negative_accounts": zod.number(),
+  "minimum_training_sample": zod.number(),
+  "min_training_each_class": zod.number(),
+  "scored_holdout_accounts": zod.number().optional(),
+  "scored_training_accounts": zod.number().optional()
+}),
+  "before": zod.object({
+  "auc": zod.number(),
+  "top_quartile_qualified_rate": zod.number()
+}).optional(),
+  "after": zod.object({
+  "auc": zod.number(),
+  "top_quartile_qualified_rate": zod.number()
+}).optional(),
+  "recommendation": zod.object({
+  "id": zod.string(),
+  "version": zod.string(),
+  "status": zod.enum(['proposed', 'approved', 'superseded']),
+  "base_version": zod.string(),
+  "config": zod.record(zod.string(), zod.unknown()),
+  "evaluation": zod.object({
+  "guardrails": zod.object({
+  "cohort": zod.string(),
+  "holdout_accounts": zod.number(),
+  "qualified_accounts": zod.number(),
+  "negative_accounts": zod.number(),
+  "minimum_sample": zod.number(),
+  "min_each_class": zod.number(),
+  "training_accounts": zod.number(),
+  "training_qualified_accounts": zod.number(),
+  "training_negative_accounts": zod.number(),
+  "minimum_training_sample": zod.number(),
+  "min_training_each_class": zod.number(),
+  "scored_holdout_accounts": zod.number().optional(),
+  "scored_training_accounts": zod.number().optional()
+}),
+  "before": zod.object({
+  "auc": zod.number(),
+  "top_quartile_qualified_rate": zod.number()
+}),
+  "after": zod.object({
+  "auc": zod.number(),
+  "top_quartile_qualified_rate": zod.number()
+}),
+  "explanation": zod.array(zod.object({
+  "dimension": zod.enum(['fit', 'need', 'intent', 'timing']),
+  "before": zod.number(),
+  "after": zod.number(),
+  "change": zod.number()
+}))
+}),
+  "created_at": zod.coerce.date(),
+  "created_by": zod.string(),
+  "approved_at": zod.coerce.date().nullish(),
+  "approved_by": zod.string().nullish()
+}).optional()
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
 /**
  * @summary Ingest a batch of canonical observations
  */
@@ -453,7 +526,6 @@ export const ingestRadarObservationsBodyRecordsItemConfidenceMin = 0.05;
 export const ingestRadarObservationsBodyRecordsItemConfidenceMax = 1;
 
 export const ingestRadarObservationsBodyRecordsMax = 5000;
-
 
 
 export const IngestRadarObservationsBody = zod.object({
@@ -498,7 +570,6 @@ export const IngestRadarObservationsResponse = zod.object({
  * @summary List inferred opportunity signals
  */
 export const listRadarSignalsQueryLimitMax = 200;
-
 
 
 export const ListRadarSignalsQueryParams = zod.object({
@@ -653,7 +724,6 @@ export const runRadarConnectorBodyToMax = 10;
 export const runRadarConnectorBodyLimitMax = 100;
 
 
-
 export const RunRadarConnectorBody = zod.object({
   "company": zod.object({
   "name": zod.string().max(runRadarConnectorBodyCompanyNameMax).optional(),
@@ -683,7 +753,6 @@ export const RunRadarConnectorBody = zod.object({
 export const runRadarConnectorResponseDataErrorsItemIndexMin = 0;
 
 export const runRadarConnectorResponseDataErrorsMax = 100;
-
 
 
 export const RunRadarConnectorResponse = zod.object({
@@ -765,7 +834,6 @@ export const GetRadarDataQualityResponse = zod.object({
 export const listRadarReviewQueueQueryLimitMax = 200;
 
 
-
 export const ListRadarReviewQueueQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listRadarReviewQueueQueryLimitMax).optional()
 })
@@ -791,3 +859,58 @@ export const ListRadarReviewQueueResponse = zod.object({
 })
 
 
+/**
+ * @summary Approve a pending score version after operator review
+ */
+export const ApproveRadarScoreCalibrationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ApproveRadarScoreCalibrationResponse = zod.object({
+  "data": zod.object({
+  "id": zod.string(),
+  "version": zod.string(),
+  "status": zod.enum(['proposed', 'approved', 'superseded']),
+  "base_version": zod.string(),
+  "config": zod.record(zod.string(), zod.unknown()),
+  "evaluation": zod.object({
+  "guardrails": zod.object({
+  "cohort": zod.string(),
+  "holdout_accounts": zod.number(),
+  "qualified_accounts": zod.number(),
+  "negative_accounts": zod.number(),
+  "minimum_sample": zod.number(),
+  "min_each_class": zod.number(),
+  "training_accounts": zod.number(),
+  "training_qualified_accounts": zod.number(),
+  "training_negative_accounts": zod.number(),
+  "minimum_training_sample": zod.number(),
+  "min_training_each_class": zod.number(),
+  "scored_holdout_accounts": zod.number().optional(),
+  "scored_training_accounts": zod.number().optional()
+}),
+  "before": zod.object({
+  "auc": zod.number(),
+  "top_quartile_qualified_rate": zod.number()
+}),
+  "after": zod.object({
+  "auc": zod.number(),
+  "top_quartile_qualified_rate": zod.number()
+}),
+  "explanation": zod.array(zod.object({
+  "dimension": zod.enum(['fit', 'need', 'intent', 'timing']),
+  "before": zod.number(),
+  "after": zod.number(),
+  "change": zod.number()
+}))
+}),
+  "created_at": zod.coerce.date(),
+  "created_by": zod.string(),
+  "approved_at": zod.coerce.date().nullish(),
+  "approved_by": zod.string().nullish()
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})

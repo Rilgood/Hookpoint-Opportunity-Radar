@@ -1,12 +1,35 @@
-import { useGetRadarOutcomeAnalytics } from "@workspace/api-client-react";
+import { useState } from "react";
+import {
+  getGetRadarOutcomeAnalyticsQueryKey,
+  useApproveRadarScoreCalibration,
+  useEvaluateRadarScoreCalibration,
+  useGetRadarOutcomeAnalytics,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/loading-states";
-import { Info, Target, TrendingUp, ShieldAlert, BarChart3 } from "lucide-react";
+import { Info, Target, TrendingUp, ShieldAlert, BarChart3, CheckCircle2, FlaskConical } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 export function CalibrationAnalytics() {
   const { data: analyticsRes, isLoading, isError } = useGetRadarOutcomeAnalytics();
+  const queryClient = useQueryClient();
+  const [evaluation, setEvaluation] = useState<any>(null);
+  const evaluate = useEvaluateRadarScoreCalibration({
+    mutation: {
+      onSuccess: (result) => setEvaluation(result.data),
+    },
+  });
+  const approve = useApproveRadarScoreCalibration({
+    mutation: {
+      onSuccess: (result) => {
+        setEvaluation({ status: "approved", recommendation: result.data });
+        void queryClient.invalidateQueries({ queryKey: getGetRadarOutcomeAnalyticsQueryKey() });
+      },
+    },
+  });
 
   if (isLoading) {
     return <Skeleton className="h-[300px] w-full" />;
@@ -84,7 +107,64 @@ export function CalibrationAnalytics() {
               </div>
             </div>
 
-            <div className="space-y-3">
+             <div className="rounded-xl border bg-slate-50/70 dark:bg-slate-900/30 p-4 space-y-4">
+               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                 <div>
+                   <h4 className="flex items-center gap-2 text-sm font-bold">
+                     <FlaskConical className="h-4 w-4 text-primary" /> Guarded score evaluation
+                   </h4>
+                   <p className="mt-1 text-xs text-muted-foreground">
+                     Tests only the most recent held-out labels. Proposed weights never apply until an operator approves them.
+                   </p>
+                 </div>
+                 <Button size="sm" onClick={() => evaluate.mutate()} disabled={evaluate.isPending || approve.isPending}>
+                   {evaluate.isPending ? "Evaluating…" : "Evaluate holdout"}
+                 </Button>
+               </div>
+               {evaluate.isError && <p className="text-sm text-destructive">Unable to evaluate this cohort. Please try again.</p>}
+               {evaluation?.status === "blocked" && (
+                 <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30">
+                   <ShieldAlert className="h-4 w-4 text-amber-600" />
+                   <AlertTitle>Recommendation blocked by guardrails</AlertTitle>
+                   <AlertDescription>{evaluation.reason}</AlertDescription>
+                 </Alert>
+               )}
+               {evaluation?.recommendation && (
+                 <div className="space-y-3 rounded-lg border bg-background p-3">
+                   <div className="flex flex-wrap items-center justify-between gap-2">
+                     <div>
+                       <p className="text-sm font-semibold">Proposed {evaluation.recommendation.version}</p>
+                       <p className="text-xs text-muted-foreground">
+                         Holdout: {evaluation.recommendation.evaluation.guardrails.holdout_accounts} labels ·
+                         {" "}{evaluation.recommendation.evaluation.guardrails.qualified_accounts} qualified / {evaluation.recommendation.evaluation.guardrails.negative_accounts} negative
+                       </p>
+                     </div>
+                     {evaluation.status === "approved" || evaluation.recommendation.status === "approved" ? (
+                       <Badge className="bg-emerald-600"><CheckCircle2 className="mr-1 h-3 w-3" />Approved</Badge>
+                     ) : (
+                       <Button size="sm" onClick={() => approve.mutate({ id: evaluation.recommendation.id })} disabled={approve.isPending}>
+                         {approve.isPending ? "Approving…" : "Approve score version"}
+                       </Button>
+                     )}
+                   </div>
+                   <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                     {evaluation.recommendation.evaluation.explanation.map((weight: any) => (
+                       <div key={weight.dimension} className="rounded border p-2">
+                         <p className="capitalize text-muted-foreground">{weight.dimension}</p>
+                         <p className="font-semibold">{(weight.before * 100).toFixed(1)}% → {(weight.after * 100).toFixed(1)}%</p>
+                       </div>
+                     ))}
+                   </div>
+                   <p className="text-xs text-muted-foreground">
+                     AUC: {(evaluation.recommendation.evaluation.before.auc * 100).toFixed(1)}% → {(evaluation.recommendation.evaluation.after.auc * 100).toFixed(1)}%
+                     {" "}· Top-quarter qualified rate: {evaluation.recommendation.evaluation.before.top_quartile_qualified_rate.toFixed(1)}% → {evaluation.recommendation.evaluation.after.top_quartile_qualified_rate.toFixed(1)}%
+                   </p>
+                   {approve.isError && <p className="text-sm text-destructive">Approval could not be saved. The current score version remains unchanged.</p>}
+                 </div>
+               )}
+             </div>
+
+             <div className="space-y-3">
               <h4 className="text-sm font-bold text-foreground uppercase tracking-wider flex items-center gap-2">
                 <BarChart3 className="h-4 w-4 text-muted-foreground" /> 
                 Score Band Performance
@@ -109,10 +189,10 @@ export function CalibrationAnalytics() {
                         <span className="text-sm text-muted-foreground font-medium">Qualified rate</span>
                       </div>
                       <div className="text-[10px] text-muted-foreground mt-0.5">
-                        {band.qualified} qualified / {band.negative} negative &bull; {(band.raw_qualified_rate * 100).toFixed(0)}% raw
+                         {band.qualified} qualified / {band.negative} negative &bull; {band.raw_qualified_rate.toFixed(0)}% raw
                       </div>
                       <div className="text-[10px] text-muted-foreground mb-1">
-                        95% CI: {(band.wilson_95_lower * 100).toFixed(0)}% - {(band.wilson_95_upper * 100).toFixed(0)}%
+                         95% CI: {band.wilson_95_lower.toFixed(0)}% - {band.wilson_95_upper.toFixed(0)}%
                       </div>
                       {band.qualified_rate_lift_vs_cold !== null && (
                         <div className="flex items-center gap-1 text-xs font-medium pt-1">

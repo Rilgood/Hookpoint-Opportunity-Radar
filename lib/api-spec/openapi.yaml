@@ -195,6 +195,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OutcomeAnalyticsResponse"
+  /v1/analytics/outcomes/evaluate:
+    post:
+      operationId: evaluateRadarScoreCalibration
+      tags: [radar]
+      summary: Evaluate a guarded score-weight recommendation on a recent holdout cohort
+      responses:
+        "200":
+          description: A blocked evaluation or an approval-ready recommendation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoreCalibrationEvaluationResponse"
+  /v1/analytics/outcomes/recommendations/{id}/approve:
+    post:
+      operationId: approveRadarScoreCalibration
+      tags: [radar]
+      summary: Approve a pending score version after operator review
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Approved immutable scoring version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoreVersionResponse"
+        "409":
+          description: Recommendation is stale or was already processed
   /v1/ingest:
     post:
       operationId: ingestRadarObservations
@@ -996,6 +1028,84 @@ components:
           $ref: "#/components/schemas/OutcomeAnalyticsData"
         meta:
           $ref: "#/components/schemas/ResponseMeta"
+    ScoreWeight:
+      type: object
+      required: [dimension, before, after, change]
+      properties:
+        dimension:
+          type: string
+          enum: [fit, need, intent, timing]
+        before: { type: number }
+        after: { type: number }
+        change: { type: number }
+    ScoreMetrics:
+      type: object
+      required: [auc, top_quartile_qualified_rate]
+      properties:
+        auc: { type: number }
+        top_quartile_qualified_rate: { type: number }
+    ScoreCalibrationGuardrails:
+      type: object
+      required: [cohort, holdout_accounts, qualified_accounts, negative_accounts, minimum_sample, min_each_class, training_accounts, training_qualified_accounts, training_negative_accounts, minimum_training_sample, min_training_each_class]
+      properties:
+        cohort: { type: string }
+        holdout_accounts: { type: number }
+        qualified_accounts: { type: number }
+        negative_accounts: { type: number }
+        minimum_sample: { type: number }
+        min_each_class: { type: number }
+        training_accounts: { type: number }
+        training_qualified_accounts: { type: number }
+        training_negative_accounts: { type: number }
+        minimum_training_sample: { type: number }
+        min_training_each_class: { type: number }
+        scored_holdout_accounts: { type: number }
+        scored_training_accounts: { type: number }
+    ScoreVersion:
+      type: object
+      required: [id, version, status, base_version, config, evaluation, created_at, created_by]
+      properties:
+        id: { type: string }
+        version: { type: string }
+        status: { type: string, enum: [proposed, approved, superseded] }
+        base_version: { type: string }
+        config: { type: object, additionalProperties: true }
+        evaluation:
+          type: object
+          required: [guardrails, before, after, explanation]
+          properties:
+            guardrails: { $ref: "#/components/schemas/ScoreCalibrationGuardrails" }
+            before: { $ref: "#/components/schemas/ScoreMetrics" }
+            after: { $ref: "#/components/schemas/ScoreMetrics" }
+            explanation:
+              type: array
+              items: { $ref: "#/components/schemas/ScoreWeight" }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string }
+        approved_at: { type: [string, "null"], format: date-time }
+        approved_by: { type: [string, "null"] }
+    ScoreCalibrationEvaluation:
+      type: object
+      required: [status, guardrails]
+      properties:
+        status: { type: string, enum: [blocked, ready] }
+        reason: { type: string }
+        guardrails: { $ref: "#/components/schemas/ScoreCalibrationGuardrails" }
+        before: { $ref: "#/components/schemas/ScoreMetrics" }
+        after: { $ref: "#/components/schemas/ScoreMetrics" }
+        recommendation: { $ref: "#/components/schemas/ScoreVersion" }
+    ScoreCalibrationEvaluationResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: "#/components/schemas/ScoreCalibrationEvaluation" }
+        meta: { $ref: "#/components/schemas/ResponseMeta" }
+    ScoreVersionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: "#/components/schemas/ScoreVersion" }
+        meta: { $ref: "#/components/schemas/ResponseMeta" }
     ObservationCompanyInput:
       type: object
       required: [name]

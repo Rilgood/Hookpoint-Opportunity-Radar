@@ -5,7 +5,8 @@ import { bootstrap } from '../src/services/bootstrap.js';
 import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
 import { companyDetail } from '../src/services/queries.js';
 import { config } from '../src/config.js';
-import { outcomeAnalytics, recordOutcome } from '../src/services/outcomes.js';
+import { approveScoreCalibration, evaluateScoreCalibration, outcomeAnalytics, recordOutcome } from '../src/services/outcomes.js';
+import { activeScoringConfig } from '../src/services/catalog.js';
 
 function setup() { const db = openDatabase(':memory:'); bootstrap(db); return db; }
 function addCompany(db, tenantId, companyId, score) {
@@ -16,6 +17,13 @@ function addCompany(db, tenantId, companyId, score) {
 function addOutcome(db, tenantId, companyId, score, outcomeType, occurredAt) {
   db.run('UPDATE companies SET opportunity_score=? WHERE tenant_id=? AND id=?', [score, tenantId, companyId]);
   return recordOutcome(db, tenantId, companyId, { outcome_type: outcomeType, occurred_at: occurredAt });
+}
+
+function addSnapshot(db, tenantId, companyId, occurredAt, { fit, need, intent = 0, timing = 0 }) {
+  db.run(`INSERT INTO score_snapshots(id, tenant_id, company_id, score_version, opportunity_score, opportunity_tier,
+    fit_score, need_score, intent_score, timing_score, risk_score, active_signal_count, components_json, computed_at)
+    VALUES (?, ?, ?, 'rules-1.1', 0, 'cold', ?, ?, ?, ?, 0, 0, '{}', ?)`,
+  [`snapshot-${companyId}`, tenantId, companyId, fit, need, intent, timing, occurredAt]);
 }
 
 test('resolves two sources to one company and corroborates a signal', () => {
@@ -151,5 +159,47 @@ test('calibration returns safe zero bands, finite intervals, and threshold metad
   assert.equal(cold.raw_qualified_rate, 33.3);
   assert.equal(cold.qualified_rate_lift_vs_cold, 0);
   assert.ok(cold.wilson_95_lower >= 0 && cold.wilson_95_upper <= 100);
+  db.close();
+});
+
+test('score recommendations require a balanced holdout and only change versions after approval', () => {
+  const db = setup();
+  const tenant = config.defaultTenantId;
+  for (let index = 0; index < 120; index += 1) {
+    const companyId = `holdout-${index}`;
+    const occurredAt = new Date(Date.UTC(2021, 0, index + 1)).toISOString();
+    addCompany(db, tenant, companyId, 10);
+    const isQualified = index >= 90 ? index % 2 === 0 : index % 3 === 0;
+    addSnapshot(db, tenant, companyId, occurredAt, isQualified ? { fit: 0, need: 70 } : { fit: 100, need: 0 });
+    addOutcome(db, tenant, companyId, 10, isQualified ? 'meeting' : 'lost', occurredAt);
+  }
+  const evaluation = evaluateScoreCalibration(db, tenant, 'operator-a');
+  assert.equal(evaluation.status, 'ready');
+  assert.equal(evaluation.recommendation.status, 'proposed');
+  assert.ok(evaluation.recommendation.evaluation.after.auc > evaluation.recommendation.evaluation.before.auc);
+  assert.equal(activeScoringConfig(db, tenant).version, 'rules-1.1');
+  const approved = approveScoreCalibration(db, tenant, evaluation.recommendation.id, 'operator-b');
+  assert.equal(approved.status, 'approved');
+  assert.equal(activeScoringConfig(db, tenant).version, approved.version);
+  assert.equal(db.get('SELECT COUNT(*) count FROM score_snapshots').count, 120);
+  db.close();
+});
+
+test('score recommendations reject a training-only pattern that fails the independent holdout', () => {
+  const db = setup();
+  const tenant = config.defaultTenantId;
+  for (let index = 0; index < 120; index += 1) {
+    const companyId = `mismatch-${index}`;
+    const occurredAt = new Date(Date.UTC(2022, 0, index + 1)).toISOString();
+    const isQualified = index % 2 === 0;
+    const trainingPattern = index < 90;
+    addCompany(db, tenant, companyId, 10);
+    addSnapshot(db, tenant, companyId, occurredAt,
+      trainingPattern === isQualified ? { fit: 0, need: 70 } : { fit: 100, need: 0 });
+    addOutcome(db, tenant, companyId, 10, isQualified ? 'meeting' : 'lost', occurredAt);
+  }
+  const evaluation = evaluateScoreCalibration(db, tenant, 'operator-a');
+  assert.equal(evaluation.status, 'blocked');
+  assert.ok(evaluation.reason.includes('did not improve holdout'));
   db.close();
 });

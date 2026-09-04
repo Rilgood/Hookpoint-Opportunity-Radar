@@ -1,5 +1,5 @@
 import { addDays, clamp, daysBetween, id, json, nowIso, round, stableJson } from '../lib.js';
-import { scoringConfig, signalCatalog, signalByKey } from './catalog.js';
+import { activeScoringConfig, scoringConfig, signalCatalog, signalByKey } from './catalog.js';
 
 export function detectSignals(observation) {
   return signalCatalog.filter((definition) => matches(definition.match, observation));
@@ -41,6 +41,7 @@ export function applySignals(db, tenantId, company, observation, definitions = d
 }
 
 export function rescoreCompany(db, tenantId, companyId, asOf = nowIso()) {
+  const scoringConfig = activeScoringConfig(db, tenantId);
   for (const signal of db.all('SELECT id, signal_key FROM signals WHERE tenant_id=? AND company_id=?', [tenantId, companyId])) {
     const definition = signalByKey.get(signal.signal_key);
     if (definition) refreshSignalEvidence(db, signal.id, definition, asOf);
