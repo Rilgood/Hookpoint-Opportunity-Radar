@@ -4,16 +4,16 @@
 
 Version 1.1 is a clean, provider-ready application kernel. Runtime placeholder data and the internal generator have been removed. Startup creates only the default tenant, connector registry and an explicitly configured bootstrap administrator key.
 
-Release verification currently covers 35 automated tests plus a live HTTP golden path from empty startup through authenticated ingestion, signed-webhook replay defense, entity resolution, scoring/suppression, scoped-key lifecycle, quality telemetry, CSV export and unsafe-production-storage rejection.
+Release verification is `pnpm run verify:radar-core` from the repository root (also registered as the `radar-core` validation workflow): a syntax check over `src/` and `test/` plus the `node --test` suite, currently 73 tests covering empty startup, authenticated ingestion, signed-webhook replay defense, entity resolution and identity merge, scoring/suppression, connector normalizers and hardening, quality telemetry, CSV export, insights and outcome calibration. The signed-in browser journey against the console lives in `artifacts/hookpoint-radar/e2e/`.
 
-The full local/Docker path is functional with persistent SQLite. The Vercel adapter is intentionally fail-closed on `/tmp`; a durable Neon/Postgres implementation remains the production gate for a Vercel-hosted API.
+The core runs only inside the `@workspace/api-server` Express host (`artifacts/api-server/src/app.ts`), which mounts it under `/api`, bridges Clerk sessions into private workspace tenants and is published as a Replit autoscale service. The host does not start the core's in-process scheduler. The embedded SQLite database is functional for local development and the pilot, but autoscale storage is not durable, so the production gate (`durability_unconfirmed`) blocks live connectors and customer data until the database boundary is implemented on managed Postgres. See `DEPLOYMENT_AND_SECURITY.md`.
 
 ## First implementation sequence
 
-1. Run `npm run check` and `npm test`.
-2. Generate independent 32+ character admin, hash and webhook secrets.
-3. Provision durable storage and a tested backup/restore path.
-4. Put the console behind SSO or distribute least-privilege API keys.
+1. Run `pnpm run verify:radar-core` and `pnpm run typecheck`.
+2. Generate independent 32+ character admin, hash and webhook secrets as workspace secrets.
+3. Provision durable storage (managed Postgres behind `src/db/`) and a tested backup/restore path.
+4. Keep the console on Clerk sign-in; issue least-privilege API keys only to direct integrations.
 5. Connect HubSpot/Salesforce first so model outcomes can be measured.
 6. Configure Apify and pin the exact actor IDs/versions approved for use.
 7. Run every new normalizer against a small, labeled set of known companies.
@@ -49,7 +49,7 @@ Optimize for accepted opportunities and revenue, with a hard constraint on suppr
 
 ## Operational gates
 
-- `/ready` returns `ready` with no critical issues
+- `/api/ready` returns `ready` with no critical issues
 - Production storage is durable and shared by every API/worker instance
 - Authentication, least-privilege scopes and key revocation are verified
 - CORS contains only explicit console origins
@@ -69,6 +69,6 @@ Optimize for accepted opportunities and revenue, with a hard constraint on suppr
 - Pull execution is synchronous in the included pilot and bounded by connector timeout.
 - Runtime schedule input is non-secret and credentials remain in managed environment storage.
 - Successful connector cursors resume automatically; operators can reset a cursor only on a one-time run.
-- Due scores refresh in scheduler batches so time decay and expiry do not depend on new evidence.
+- Due scores refresh in scheduler batches so time decay and expiry do not depend on new evidence; because the host does not start the scheduler, `POST /api/v1/rescore` and `POST /api/v1/connectors/:key/run` are the current triggers.
 - Accounts below 0.8 identity confidence cannot enter warm/hot activation until an operator resolves them.
-- The UI is framework-free so it can remain standalone or be embedded into the Hyper Ads product.
+- The core has no UI of its own and no framework dependencies. The operator console (`artifacts/hookpoint-radar`) talks to it only through the versioned HTTP API, so the core can be embedded into the Hyper Ads product without the console.

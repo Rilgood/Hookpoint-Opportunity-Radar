@@ -6,6 +6,8 @@ It converts real company changes into prioritized accounts: what changed, why th
 
 The repository starts with an empty database. It contains no runtime placeholder companies, generated observations, or automatic seed path.
 
+`radar-core` is the dependency-free JavaScript kernel of the product. It is not deployed on its own: the `@workspace/api-server` artifact imports it and serves it under `/api`, and the operator console is the React app in `artifacts/hookpoint-radar`. See [How this package is deployed](#how-this-package-is-deployed).
+
 ## Implemented product surface
 
 - Tenant-scoped company, alias and decision-maker records
@@ -31,65 +33,64 @@ The repository starts with an empty database. It contains no runtime placeholder
 - Scheduled due-score refresh so evidence decay changes rankings without new ingestion
 - Scoped API-key creation, one-time token delivery, use tracking and revocation
 - Authenticated CSV export up to a configurable limit
-- Operator dashboard with server-side search, pagination, empty-state onboarding and data-quality monitoring
-- In-place SQLite schema migrations, WAL tuning, Docker packaging and release verification
+- Operator console (`artifacts/hookpoint-radar`) with server-side search, pagination, empty-state onboarding and data-quality monitoring
+- In-place SQLite schema migrations, WAL tuning and release verification
+
+## How this package is deployed
+
+There is exactly one runtime for this code: the Express host in `artifacts/api-server`.
+
+- `artifacts/api-server/src/app.ts` imports `createApp` from `radar-core/src/app.js` with `serveStaticAssets: false` and forwards `/api/v1/*`, `/api/health` and `/api/ready` to it. Everything else on the host (Clerk proxy, `/api/healthz`) is ordinary Express.
+- Browser users sign in with Clerk. The host verifies the session and hands the Clerk user ID to the core through `setTrustedPrincipal`, which maps each user to a private workspace tenant with `read`, `write` and `admin` scopes. Requests that carry an `X-API-Key` header bypass Clerk entirely and are authenticated by the core's own API-key store.
+- The operator console is the React/Vite app in `artifacts/hookpoint-radar`. `radar-core` ships no HTML, CSS or static assets, and the host never serves any from it.
+- `artifacts/api-server` is bundled with esbuild into `artifacts/api-server/dist/index.mjs`. Because the core resolves its root directory relative to the running file, the **bundled** runtime reads `artifacts/api-server/config/*.json` and stores its database at `artifacts/api-server/data/hookpoint-radar.sqlite`. The copies under `radar-core/config/` are what the tests and any direct `node src/server.js` run use. Keep the two `config/` directories identical; edit both when you change a catalog or scoring version.
+- The host does not start the core's in-process scheduler. Connector schedules and due-score refresh therefore do not fire on their own in this deployment; trigger them with `POST /api/v1/connectors/:key/run` and `POST /api/v1/rescore` until the host wires in a scheduler.
+
+The deployment target is the Replit autoscale publish described in `artifacts/api-server/.replit-artifact/artifact.toml`: build with `pnpm --filter @workspace/api-server run build`, run `node --enable-source-maps artifacts/api-server/dist/index.mjs` with `NODE_ENV=production`, and use `/api/healthz` as the startup probe.
 
 ## Run locally
 
-Requirements: Node.js 24 or Docker. The local runtime has no package dependencies.
+Requirements: Node.js 24 and pnpm. The core itself has no package dependencies; the host and console are pnpm workspace members, so run `pnpm install` once at the repository root.
+
+**In the Replit workspace** start the `API Server` and `web` workflows. They inject the values both dev servers refuse to start without (`PORT=8080` for the host; `PORT=22502` and `BASE_PATH=/` for the console, from each artifact's `.replit-artifact/artifact.toml`), and the preview proxy serves the console at `/` and the host at `/api` on one origin, which is what the console expects. Open the preview root, sign in with Clerk, and you are on the default private workspace.
+
+**Without the workflows** (a plain shell, CI, another machine) set those values yourself, in two terminals:
 
 ```bash
-cp .env.example .env
-node src/server.js
+# terminal 1 – API host
+PORT=8080 NODE_ENV=development pnpm --filter @workspace/api-server run dev
+curl http://localhost:8080/api/health
+curl http://localhost:8080/api/ready
+
+# terminal 2 – operator console
+PORT=22502 BASE_PATH=/ pnpm --filter @workspace/hookpoint-radar run dev
 ```
 
-Open `http://localhost:8787`. With `AUTH_REQUIRED=false`, the local console uses the default tenant. The signed webhook remains unavailable until `CONNECTOR_WEBHOOK_SECRET` is configured.
+The console calls `/api/...` on its own origin, so on its own `http://localhost:22502` cannot reach the host. Put a reverse proxy in front that sends `/api/*` to `:8080` and everything else to `:22502`; `pnpm run verify:browser-smoke` (`scripts/src/browser-smoke.ts`) starts exactly that arrangement on free ports and is the reference for a self-contained local stack. The Clerk keys (`CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`) must also be present in the environment for the host and console to boot.
 
-Verify a clean checkout:
+**Calling the API from curl or a script.** The host requires a Clerk session for `/api/v1/*` unless the request carries `X-API-Key`; without either it answers `401` before the core is reached, whatever `AUTH_REQUIRED` says. To use API keys locally, start the host with both `ADMIN_API_KEY` and `HASH_SALT` set to independent values of at least 32 characters (the bootstrap key is only created when both are that long), then send `-H "x-api-key: $ADMIN_API_KEY"` as in the examples below. `/api/health` and `/api/ready` are public. The signed webhook stays unavailable until `CONNECTOR_WEBHOOK_SECRET` is configured.
+
+Configuration is read from environment variables (full list in [docs/DEPLOYMENT_AND_SECURITY.md](docs/DEPLOYMENT_AND_SECURITY.md)). There is no `.env.example`; in the Replit workspace set values as workspace secrets or environment variables.
+
+Verify a clean checkout from the repository root:
 
 ```bash
-npm run check
-npm test
+pnpm run verify:radar-core
 ```
 
-`npm run check` syntax-checks every file under `src/` and `test/`. `npm test` runs the automated suite against in-memory and temporary SQLite databases: it confirms the starting dataset is empty, ingests canonical fixtures, and exercises entity resolution, scoring, crisis suppression, webhook replay defense, connector hardening and CSV export. Nothing is written to the working database.
+That script runs this package's `check` (syntax-checks every file under `src/` and `test/`) and `test` (the `node --test` suite against in-memory and temporary SQLite databases: it confirms the starting dataset is empty, ingests canonical fixtures, and exercises entity resolution, scoring, crisis suppression, webhook replay defense, connector hardening and CSV export). Nothing is written to the working database. The same command is registered as the `radar-core` validation workflow. You can also run `pnpm run check` and `pnpm run test` from inside `artifacts/api-server/radar-core`.
 
-To start over locally, stop the server and delete the SQLite file at `DATABASE_PATH` (default `./data/hookpoint-radar.sqlite`) along with its `-wal` and `-shm` companions; the schema is recreated on the next start.
+To start over locally, stop the API host and delete `artifacts/api-server/data/hookpoint-radar.sqlite` along with its `-wal` and `-shm` companions (or whatever `DATABASE_PATH` points at); the schema is recreated on the next start. The database file is git-ignored.
 
-## Secure single-instance deployment
+## Production gate
 
-Generate three independent random values of at least 32 characters and configure:
+The core refuses production traffic until its configuration is safe. When `NODE_ENV=production`, every non-public `/api/v1` request returns `503 runtime_not_ready` while any critical issue is open, and `/api/ready` lists the issue codes. The checks that matter for this deployment:
 
-```dotenv
-NODE_ENV=production
-AUTH_REQUIRED=true
-ADMIN_API_KEY=<random-bootstrap-key>
-HASH_SALT=<random-hash-pepper>
-CONNECTOR_WEBHOOK_SECRET=<random-webhook-secret>
-ALLOWED_ORIGINS=https://your-console.example
-DATABASE_PATH=/app/data/hookpoint-radar.sqlite
-DURABLE_STORAGE_CONFIRMED=true
-```
+- `AUTH_REQUIRED` defaults to `true` in production and must stay there.
+- `HASH_SALT`, `ADMIN_API_KEY` and `CONNECTOR_WEBHOOK_SECRET`, when set, must each be independent random values of at least 32 characters. `weak_hash_salt` and `no_active_api_key` block API-key clients but not Clerk-authenticated console users.
+- `durability_unconfirmed`: production storage must be a durable, backed-up volume, and the operator must assert that with `DURABLE_STORAGE_CONFIRMED=true`. Replit autoscale instances do not keep filesystem writes across restarts or instances, so the embedded SQLite file is **not** durable there. Do not set the assertion on autoscale; move operational data to Postgres (see [Supported scope](#supported-scope)) before enabling live connectors or customer data.
 
-Then start with a durable volume:
-
-```bash
-docker compose up --build -d
-curl --fail http://localhost:8787/ready
-```
-
-`/health` is process liveness. `/ready` also checks schema, authentication configuration and storage safety. The container health check uses `/ready` so unsafe configuration does not look production-ready.
-
-## Vercel boundary
-
-`api/index.js` and `vercel.json` package the UI and HTTP handler for Vercel, but Vercel function-local `/tmp` is not durable or shared. The source therefore:
-
-- never auto-populates records;
-- enables authentication by default;
-- disables the in-process scheduler; and
-- returns `503 not_ready` while production storage is ephemeral.
-
-Do not attach live connectors or customer data to that configuration. For a Vercel production release, implement the database boundary against marketplace-managed Neon Postgres (preferred) or another durable transactional store, run migrations, and use Vercel Cron/Queues or an external worker for connector schedules. The existing embedded SQLite build is production-capable only as a single application instance with a backed-up persistent volume.
+`/api/health` is process liveness only. `/api/ready` also checks schema, authentication configuration and storage safety.
 
 ## Canonical observation
 
@@ -124,7 +125,7 @@ Do not attach live connectors or customer data to that configuration. For a Verc
 Ingest one to 5,000 records:
 
 ```bash
-curl -X POST http://localhost:8787/api/v1/ingest \
+curl -X POST http://localhost:8080/api/v1/ingest \
   -H 'content-type: application/json' \
   -H "x-api-key: $ADMIN_API_KEY" \
   --data '{"records":[...records...]}'
@@ -142,7 +143,7 @@ body='{"records":[...]}'
 source='my_source'
 signature="$(printf '%s' "$timestamp.$source.$body" | openssl dgst -sha256 -hmac "$CONNECTOR_WEBHOOK_SECRET" -hex | awk '{print $2}')"
 
-curl -X POST http://localhost:8787/api/v1/webhooks/my_source \
+curl -X POST http://localhost:8080/api/v1/webhooks/my_source \
   -H 'content-type: application/json' \
   -H "x-api-key: $ADMIN_API_KEY" \
   -H "x-hookpoint-timestamp: $timestamp" \
@@ -169,9 +170,11 @@ An account below 0.8 identity confidence cannot become `warm` or `hot`, even whe
 
 ## Main API
 
+All paths below are served by the host under its `/api` prefix; the core's bare `/health` and `/ready` aliases are not forwarded.
+
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `GET` | `/health`, `/ready` | Liveness and fail-closed readiness |
+| `GET` | `/api/health`, `/api/ready` | Liveness and fail-closed readiness |
 | `GET` | `/api/v1/dashboard` | Portfolio summary |
 | `GET/POST` | `/api/v1/companies` | Ranked accounts and manual creation |
 | `GET/PATCH/DELETE` | `/api/v1/companies/:id` | Evidence packet, workflow updates and admin privacy deletion |
@@ -197,19 +200,26 @@ See [docs/openapi.yaml](docs/openapi.yaml) for the full contract.
 
 The signal taxonomy is cross-industry. The embedded deployment is intended for a controlled, single-instance pilot of roughly 25,000–50,000 monitored companies, subject to observation volume and retention. Use cheap broad sources for the universe, then promote qualified accounts into costlier ads, social, review and first-party monitoring.
 
-Before horizontal scaling, move operational data to Postgres, schedules to durable workers, rate limiting to a shared store, raw payloads to governed object storage, and authentication to SSO or short-lived tenant credentials.
+Before horizontal scaling, move operational data to Postgres, schedules to durable workers, rate limiting to a shared store, raw payloads to governed object storage, and API-key distribution to short-lived tenant credentials.
 
 ## Repository map
 
 ```text
-config/                 Connector, signal and scoring configuration
-docs/                   Architecture, contracts, security and OpenAPI
-public/                 Operator console
-src/connectors/         Provider collectors and normalizers
-src/db/                 SQLite schema, migrations and database boundary
-src/http/               Routing, I/O and security controls
-src/services/           Resolution, ingestion, scoring, outcomes and queries
-test/                   Domain, normalizer and hardening tests
+artifacts/api-server/radar-core/
+  config/               Connector, signal and scoring configuration (mirrored in ../config for the bundled host)
+  docs/                 Architecture, contracts, security and OpenAPI
+  src/app.js            createApp(db, { serveStaticAssets }) – the HTTP handler the host mounts
+  src/server.js         Bare node:http entry point (not used by the host)
+  src/connectors/       Provider collectors and normalizers
+  src/db/               SQLite schema, migrations and database boundary
+  src/http/             Routing, I/O and security controls
+  src/services/         Resolution, ingestion, scoring, outcomes and queries
+  test/                 Domain, normalizer and hardening tests
+artifacts/api-server/
+  src/app.ts            Express host: Clerk session bridge and radar mount
+  config/               Catalog and scoring files read by the bundled runtime
+  data/                 Local SQLite database (git-ignored)
+artifacts/hookpoint-radar/ Operator console (React + Vite + Clerk)
 ```
 
 ## Safety and data-use boundaries
