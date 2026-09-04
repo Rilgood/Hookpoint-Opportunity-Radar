@@ -7,7 +7,10 @@ lib/api-client-react/src/generated
 lib/api-zod/src/generated
 "
 
-pnpm --filter @workspace/api-spec run codegen
+# Orval deletes and rewrites the generated client while it runs. Hold the shared
+# lock so a concurrent release gate (verify:browser-smoke) that builds against the
+# generated files never sees them half-written.
+flock /tmp/hookpoint-radar-generated-api.lock pnpm --filter @workspace/api-spec run codegen
 
 if [ -n "$(git status --porcelain -- $generated_paths)" ]; then
   echo "Generated API client files are out of date." >&2

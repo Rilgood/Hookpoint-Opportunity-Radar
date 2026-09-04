@@ -2,4 +2,4 @@
 - [Pilot workspace isolation](pilot-workspace-isolation.md) — start with one private workspace per user; shared access requires explicit memberships and roles.
 - [Workspace test tooling](workspace-test-tooling.md) — the managed package installer cannot add shared developer tools to a pnpm workspace root.
 - [Outcome cohort label time](outcome-cohort-label-time.md) — cohort/source/timing analytics must only use evidence observed before the earliest label; exclude, never zero.
-- [Browser e2e setup](browser-e2e-setup.md) — Clerk ticket sign-in via Backend API, system Chromium, and keep Playwright outputDir outside the Vite root or the dev server reload-loops.
+- [Browser e2e setup](browser-e2e-setup.md) — Clerk ticket sign-in, system Chromium, outputDir outside the Vite root, and the isolated localhost-proxy release gate (Clerk dev accepts localhost origins).

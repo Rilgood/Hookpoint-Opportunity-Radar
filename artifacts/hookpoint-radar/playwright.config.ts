@@ -7,6 +7,9 @@ import { defineConfig } from "@playwright/test";
 // The suite drives the *running* development stack (web + API workflows) through
 // the same path-routed origin the operator uses, signs in with a real Clerk
 // session, and exercises identity confirmation and score approval end to end.
+// `pnpm run verify:browser-smoke` (scripts/src/browser-smoke.ts) starts both
+// services on free ports behind a local proxy and runs this suite as a release
+// gate; set E2E_BASE_URL to point the suite at any other origin.
 //
 // Required environment:
 //   CLERK_SECRET_KEY   Clerk Backend API key for the development instance
