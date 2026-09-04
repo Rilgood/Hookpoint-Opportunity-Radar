@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS companies (
   opportunity_tier TEXT NOT NULL DEFAULT 'cold',
   owner_name TEXT,
   crm_id TEXT,
+  identity_review_status TEXT NOT NULL DEFAULT 'unreviewed',
   last_observed_at TEXT,
   next_refresh_at TEXT,
   created_at TEXT NOT NULL,
@@ -81,6 +82,18 @@ CREATE TABLE IF NOT EXISTS company_aliases (
   created_at TEXT NOT NULL,
   UNIQUE(tenant_id, alias_type, normalized_value)
 );
+
+CREATE TABLE IF NOT EXISTS identity_review_actions (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  company_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  note TEXT,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_identity_review_actions_company ON identity_review_actions(tenant_id, company_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS people (
   id TEXT PRIMARY KEY,

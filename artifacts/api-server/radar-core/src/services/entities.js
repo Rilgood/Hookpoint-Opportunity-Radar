@@ -91,6 +91,84 @@ export function createCompany(db, tenantId, input = {}, options = {}) {
   return db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, companyId]);
 }
 
+export function confirmIdentity(db, tenantId, companyId, input = {}, actor = 'operator') {
+  const company = db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, companyId]);
+  if (!company) throw new AppError(404, 'company_not_found', 'Company not found.');
+  const identityType = String(input.identity_type || '');
+  if (!['domain', 'crm_id', 'linkedin_url'].includes(identityType)) {
+    throw new AppError(400, 'invalid_identity_type', 'identity_type must be domain, crm_id, or linkedin_url.');
+  }
+  const value = input.value;
+  if (typeof value !== 'string' || !value.trim()) throw new AppError(400, 'identity_value_required', 'An authoritative identity value is required.');
+  const updated = updateCompany(db, tenantId, companyId, { [identityType]: value }, {
+    actor, source: 'identity_review', identityConfidence: 1, identityMethod: `reviewed_${identityType}`
+  });
+  setReviewStatus(db, tenantId, companyId, 'confirmed');
+  recordReviewAction(db, tenantId, companyId, 'identity.confirmed', actor, input.note, { identity_type: identityType, value: updated[identityType] });
+  return db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, companyId]);
+}
+
+export function mergeCompanies(db, tenantId, sourceCompanyId, input = {}, actor = 'operator') {
+  if (input.confirmed !== true) throw new AppError(400, 'merge_confirmation_required', 'Set confirmed to true to merge accounts.');
+  const targetCompanyId = String(input.target_company_id || '');
+  if (!targetCompanyId || targetCompanyId === sourceCompanyId) throw new AppError(400, 'invalid_merge_target', 'Choose a different target account.');
+  const source = db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, sourceCompanyId]);
+  const target = db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, targetCompanyId]);
+  if (!source || !target) throw new AppError(404, 'company_not_found', 'Both accounts must exist.');
+
+  const sourceSignals = db.all('SELECT id, signal_key FROM signals WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
+  for (const signal of sourceSignals) {
+    const duplicate = db.get('SELECT id FROM signals WHERE tenant_id=? AND company_id=? AND signal_key=?', [tenantId, targetCompanyId, signal.signal_key]);
+    if (duplicate) {
+      db.run(`INSERT OR IGNORE INTO signal_evidence(signal_id, observation_id, source, linked_at)
+        SELECT ?, observation_id, source, linked_at FROM signal_evidence WHERE signal_id=?`, [duplicate.id, signal.id]);
+      db.run('DELETE FROM signals WHERE id=?', [signal.id]);
+    }
+  }
+  moveRows(db, 'people', tenantId, sourceCompanyId, targetCompanyId, ['source', 'external_id']);
+  moveRows(db, 'observations', tenantId, sourceCompanyId, targetCompanyId, ['source', 'content_hash']);
+  db.run('UPDATE signals SET company_id=? WHERE tenant_id=? AND company_id=?', [targetCompanyId, tenantId, sourceCompanyId]);
+  for (const table of ['lead_events', 'outcomes', 'score_snapshots']) db.run(`UPDATE ${table} SET company_id=? WHERE tenant_id=? AND company_id=?`, [targetCompanyId, tenantId, sourceCompanyId]);
+  const targetRecommendation = db.get('SELECT id FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, targetCompanyId]);
+  if (targetRecommendation) db.run('DELETE FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
+  else db.run('UPDATE recommendations SET company_id=? WHERE tenant_id=? AND company_id=?', [targetCompanyId, tenantId, sourceCompanyId]);
+  const aliases = db.all('SELECT * FROM company_aliases WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
+  for (const alias of aliases) {
+    const exists = db.get('SELECT id FROM company_aliases WHERE tenant_id=? AND alias_type=? AND normalized_value=? AND company_id<>?', [tenantId, alias.alias_type, alias.normalized_value, sourceCompanyId]);
+    if (exists) db.run('DELETE FROM company_aliases WHERE id=?', [alias.id]);
+    else db.run('UPDATE company_aliases SET company_id=? WHERE id=?', [targetCompanyId, alias.id]);
+  }
+  db.run(`INSERT OR IGNORE INTO company_source_identities(id, tenant_id, company_id, source, identity_type, normalized_value, created_at)
+    SELECT id, tenant_id, ?, source, identity_type, normalized_value, created_at FROM company_source_identities WHERE tenant_id=? AND company_id=?`, [targetCompanyId, tenantId, sourceCompanyId]);
+  db.run('DELETE FROM company_source_identities WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
+  recordReviewAction(db, tenantId, sourceCompanyId, 'identity.merged', actor, input.note, { target_company_id: targetCompanyId, source_name: source.name });
+  recordReviewAction(db, tenantId, targetCompanyId, 'identity.merge_received', actor, input.note, { source_company_id: sourceCompanyId, source_name: source.name });
+  db.run('DELETE FROM companies WHERE tenant_id=? AND id=?', [tenantId, sourceCompanyId]);
+  setReviewStatus(db, tenantId, targetCompanyId, 'confirmed');
+  return { source_company_id: sourceCompanyId, target_company_id: targetCompanyId, merged: true };
+}
+
+export function separateCompany(db, tenantId, companyId, input = {}, actor = 'operator') {
+  if (input.confirmed !== true) throw new AppError(400, 'split_confirmation_required', 'Set confirmed to true to separate account identities.');
+  const source = db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, companyId]);
+  if (!source) throw new AppError(404, 'company_not_found', 'Company not found.');
+  const aliasIds = Array.isArray(input.alias_ids) ? [...new Set(input.alias_ids.map(String))].slice(0, 20) : [];
+  if (!aliasIds.length || !String(input.name || '').trim()) throw new AppError(400, 'split_identity_required', 'Provide a name and at least one alias to separate.');
+  const placeholders = aliasIds.map(() => '?').join(',');
+  const aliases = db.all(`SELECT * FROM company_aliases WHERE tenant_id=? AND company_id=? AND id IN (${placeholders})`, [tenantId, companyId, ...aliasIds]);
+  if (aliases.length !== aliasIds.length) throw new AppError(400, 'invalid_split_aliases', 'Every selected alias must belong to this account.');
+  const separated = createCompany(db, tenantId, { name: input.name, city: source.city, state: source.state, country: source.country, industry: source.industry }, { source: 'identity_review' });
+  for (const alias of aliases) db.run('UPDATE company_aliases SET company_id=? WHERE id=?', [separated.id, alias.id]);
+  const fields = {};
+  for (const alias of aliases) if (['domain', 'crm_id', 'linkedin_url'].includes(alias.alias_type)) fields[alias.alias_type] = alias.alias_value;
+  if (Object.keys(fields).length) updateCompany(db, tenantId, separated.id, fields, { source: 'identity_review', identityConfidence: 0.85, identityMethod: 'reviewed_separation' });
+  setReviewStatus(db, tenantId, companyId, 'separated');
+  setReviewStatus(db, tenantId, separated.id, 'needs_review');
+  recordReviewAction(db, tenantId, companyId, 'identity.separated', actor, input.note, { separated_company_id: separated.id, alias_ids: aliasIds });
+  recordReviewAction(db, tenantId, separated.id, 'identity.separation_created', actor, input.note, { source_company_id: companyId, alias_ids: aliasIds });
+  return { source_company_id: companyId, separated_company_id: separated.id, separated: true };
+}
+
 export function updateCompany(db, tenantId, companyId, input = {}, options = {}) {
   const current = db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, companyId]);
   if (!current) throw new AppError(404, 'company_not_found', 'Company not found.');
@@ -226,6 +304,23 @@ function addAliases(db, tenantId, companyId, values, source) {
 function recordResolution(db, tenantId, companyId, source, method, confidence, identity) {
   db.run(`INSERT INTO entity_resolution_events(id, tenant_id, company_id, source, method, confidence, incoming_name, incoming_domain, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id('resolve'), tenantId, companyId, String(source).slice(0, 100), method, confidence, identity.name, identity.domain || null, nowIso()]);
+}
+
+function setReviewStatus(db, tenantId, companyId, status) {
+  db.run('UPDATE companies SET identity_review_status=?, updated_at=? WHERE tenant_id=? AND id=?', [status, nowIso(), tenantId, companyId]);
+}
+function recordReviewAction(db, tenantId, companyId, action, actor, note, details) {
+  db.run(`INSERT INTO identity_review_actions(id, tenant_id, company_id, action, actor, note, details_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [id('identity_review'), tenantId, companyId, action, String(actor).slice(0, 200),
+    nullableText(note, 2_000), JSON.stringify(details || {}), nowIso()]);
+}
+function moveRows(db, table, tenantId, sourceCompanyId, targetCompanyId, uniqueColumns) {
+  const rows = db.all(`SELECT id, ${uniqueColumns.join(', ')} FROM ${table} WHERE tenant_id=? AND company_id=?`, [tenantId, sourceCompanyId]);
+  for (const row of rows) {
+    const match = db.get(`SELECT id FROM ${table} WHERE tenant_id=? AND company_id=? AND ${uniqueColumns.map((column) => `${column}=?`).join(' AND ')}`, [tenantId, targetCompanyId, ...uniqueColumns.map((column) => row[column])]);
+    if (match) db.run(`DELETE FROM ${table} WHERE id=?`, [row.id]);
+    else db.run(`UPDATE ${table} SET company_id=? WHERE id=?`, [targetCompanyId, row.id]);
+  }
 }
 
 function locationAgreement(candidate, identity) {

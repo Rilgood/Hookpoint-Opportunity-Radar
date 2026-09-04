@@ -64,6 +64,7 @@ export const listRadarCompaniesQueryLimitMax = 200;
 export const ListRadarCompaniesQueryParams = zod.object({
   "tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']).optional(),
   "q": zod.coerce.string().optional(),
+  "identity_review_status": zod.enum(['unreviewed', 'needs_review', 'confirmed', 'separated']).optional(),
   "min_score": zod.coerce.number().min(listRadarCompaniesQueryMinScoreMin).max(listRadarCompaniesQueryMinScoreMax).optional(),
   "page": zod.coerce.number().min(1).optional(),
   "limit": zod.coerce.number().min(1).max(listRadarCompaniesQueryLimitMax).optional()
@@ -76,6 +77,7 @@ export const ListRadarCompaniesResponse = zod.object({
   "name": zod.string(),
   "domain": zod.string().nullish(),
   "website_url": zod.string().nullish(),
+  "linkedin_url": zod.string().nullish(),
   "industry": zod.string(),
   "subindustry": zod.string().nullish(),
   "employee_count": zod.number().nullish(),
@@ -88,6 +90,7 @@ export const ListRadarCompaniesResponse = zod.object({
   "monitoring_tier": zod.string(),
   "identity_confidence": zod.number(),
   "identity_method": zod.string(),
+  "identity_review_status": zod.enum(['unreviewed', 'needs_review', 'confirmed', 'separated']),
   "fit_score": zod.number(),
   "need_score": zod.number(),
   "intent_score": zod.number(),
@@ -96,6 +99,7 @@ export const ListRadarCompaniesResponse = zod.object({
   "opportunity_score": zod.number(),
   "opportunity_tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']),
   "owner_name": zod.string().nullish(),
+  "crm_id": zod.string().nullish(),
   "last_observed_at": zod.coerce.date().nullish(),
   "next_refresh_at": zod.coerce.date().nullish(),
   "created_at": zod.coerce.date().optional(),
@@ -127,6 +131,7 @@ export const GetRadarCompanyResponse = zod.object({
   "name": zod.string(),
   "domain": zod.string().nullish(),
   "website_url": zod.string().nullish(),
+  "linkedin_url": zod.string().nullish(),
   "industry": zod.string(),
   "subindustry": zod.string().nullish(),
   "employee_count": zod.number().nullish(),
@@ -139,6 +144,7 @@ export const GetRadarCompanyResponse = zod.object({
   "monitoring_tier": zod.string(),
   "identity_confidence": zod.number(),
   "identity_method": zod.string(),
+  "identity_review_status": zod.enum(['unreviewed', 'needs_review', 'confirmed', 'separated']),
   "fit_score": zod.number(),
   "need_score": zod.number(),
   "intent_score": zod.number(),
@@ -147,6 +153,7 @@ export const GetRadarCompanyResponse = zod.object({
   "opportunity_score": zod.number(),
   "opportunity_tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']),
   "owner_name": zod.string().nullish(),
+  "crm_id": zod.string().nullish(),
   "last_observed_at": zod.coerce.date().nullish(),
   "next_refresh_at": zod.coerce.date().nullish(),
   "created_at": zod.coerce.date().optional(),
@@ -193,6 +200,20 @@ export const GetRadarCompanyResponse = zod.object({
   "confidence": zod.number().optional(),
   "is_decision_maker": zod.union([zod.number(),zod.boolean()]).optional()
 })),
+  "identity_review": zod.object({
+  "status": zod.enum(['unreviewed', 'needs_review', 'confirmed', 'separated']),
+  "aliases": zod.array(zod.object({
+  "id": zod.string(),
+  "alias_type": zod.string(),
+  "alias_value": zod.string(),
+  "normalized_value": zod.string(),
+  "source": zod.string().nullish(),
+  "created_at": zod.coerce.date()
+})),
+  "resolution_events": zod.array(zod.record(zod.string(), zod.unknown())),
+  "conflicting_attributes": zod.array(zod.record(zod.string(), zod.unknown())),
+  "actions": zod.array(zod.record(zod.string(), zod.unknown()))
+}),
   "recommendation": zod.union([zod.object({
   "offer": zod.string(),
   "rationale": zod.string(),
@@ -231,6 +252,122 @@ export const RecordRadarOutcomeBody = zod.object({
 
 export const RecordRadarOutcomeResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * @summary Confirm an authoritative account identity
+ */
+export const ConfirmRadarIdentityParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ConfirmRadarIdentityBody = zod.object({
+  "identity_type": zod.enum(['domain', 'crm_id', 'linkedin_url']),
+  "value": zod.string(),
+  "note": zod.string().optional()
+})
+
+export const ConfirmRadarIdentityResponse = zod.object({
+  "data": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullish(),
+  "website_url": zod.string().nullish(),
+  "linkedin_url": zod.string().nullish(),
+  "industry": zod.string(),
+  "subindustry": zod.string().nullish(),
+  "employee_count": zod.number().nullish(),
+  "size_band": zod.string().nullish(),
+  "annual_revenue": zod.number().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "status": zod.enum(['prospect', 'accepted', 'rejected', 'contacted', 'replied', 'meeting', 'opportunity', 'customer', 'lost', 'disqualified']),
+  "monitoring_tier": zod.string(),
+  "identity_confidence": zod.number(),
+  "identity_method": zod.string(),
+  "identity_review_status": zod.enum(['unreviewed', 'needs_review', 'confirmed', 'separated']),
+  "fit_score": zod.number(),
+  "need_score": zod.number(),
+  "intent_score": zod.number(),
+  "timing_score": zod.number(),
+  "risk_score": zod.number(),
+  "opportunity_score": zod.number(),
+  "opportunity_tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']),
+  "owner_name": zod.string().nullish(),
+  "crm_id": zod.string().nullish(),
+  "last_observed_at": zod.coerce.date().nullish(),
+  "next_refresh_at": zod.coerce.date().nullish(),
+  "created_at": zod.coerce.date().optional(),
+  "updated_at": zod.coerce.date().optional()
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * This high-risk operation only runs when confirmed is true.
+ * @summary Merge this account into a reviewed target account
+ */
+export const MergeRadarCompanyIdentityParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const MergeRadarCompanyIdentityBody = zod.object({
+  "target_company_id": zod.string(),
+  "confirmed": zod.boolean().describe('Must be true; prevents accidental merges.'),
+  "note": zod.string().optional()
+})
+
+export const MergeRadarCompanyIdentityResponse = zod.object({
+  "data": zod.object({
+  "source_company_id": zod.string(),
+  "target_company_id": zod.string().optional(),
+  "separated_company_id": zod.string().optional(),
+  "merged": zod.boolean().optional(),
+  "separated": zod.boolean().optional()
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * This high-risk operation only runs when confirmed is true.
+ * @summary Separate aliases into a new account
+ */
+export const SeparateRadarCompanyIdentityParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+export const SeparateRadarCompanyIdentityBody = zod.object({
+  "name": zod.string(),
+  "alias_ids": zod.array(zod.string()).min(1),
+  "confirmed": zod.boolean().describe('Must be true; prevents accidental identity separation.'),
+  "note": zod.string().optional()
+})
+
+export const SeparateRadarCompanyIdentityResponse = zod.object({
+  "data": zod.object({
+  "source_company_id": zod.string(),
+  "target_company_id": zod.string().optional(),
+  "separated_company_id": zod.string().optional(),
+  "merged": zod.boolean().optional(),
+  "separated": zod.boolean().optional()
+}),
   "meta": zod.object({
   "request_id": zod.string(),
   "duration_ms": zod.number()

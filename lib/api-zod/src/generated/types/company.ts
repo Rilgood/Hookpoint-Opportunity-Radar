@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.1.0
  */
 import type { CompanyStatus } from './companyStatus';
+import type { IdentityReviewStatus } from './identityReviewStatus';
 import type { OpportunityTier } from './opportunityTier';
 
 export interface Company {
@@ -15,6 +16,8 @@ export interface Company {
   domain?: string | null;
   /** @nullable */
   website_url?: string | null;
+  /** @nullable */
+  linkedin_url?: string | null;
   industry: string;
   /** @nullable */
   subindustry?: string | null;
@@ -34,6 +37,7 @@ export interface Company {
   monitoring_tier: string;
   identity_confidence: number;
   identity_method: string;
+  identity_review_status: IdentityReviewStatus;
   fit_score: number;
   need_score: number;
   intent_score: number;
@@ -43,6 +47,8 @@ export interface Company {
   opportunity_tier: OpportunityTier;
   /** @nullable */
   owner_name?: string | null;
+  /** @nullable */
+  crm_id?: string | null;
   /** @nullable */
   last_observed_at?: Date | null;
   /** @nullable */

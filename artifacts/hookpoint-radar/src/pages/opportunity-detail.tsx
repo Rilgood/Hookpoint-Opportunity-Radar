@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import {
   useGetRadarCompany,
+  useConfirmRadarIdentity,
+  useMergeRadarCompanyIdentity,
+  useSeparateRadarCompanyIdentity,
+  useListRadarCompanies,
   useRecordRadarOutcome,
   OutcomeInputOutcomeType,
   OutcomeInput,
@@ -17,6 +21,11 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/loading-states";
 import { getTierColor, formatDate, humanizeLabel } from "@/lib/utils";
 import {
@@ -33,15 +42,24 @@ import {
   GitMerge,
   History,
   AlertCircle,
+  ShieldCheck,
+  Split,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { OutcomeDialog } from "@/components/outcome-dialog";
 
 export default function OpportunityDetail() {
   const { id } = useParams();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [outcomeDialogOpen, setOutcomeDialogOpen] = useState(false);
+  const [identityDialog, setIdentityDialog] = useState<"confirm" | "merge" | "separate" | null>(null);
+  const [identityType, setIdentityType] = useState<"domain" | "crm_id" | "linkedin_url">("domain");
+  const [identityValue, setIdentityValue] = useState("");
+  const [mergeTarget, setMergeTarget] = useState("");
+  const [separatedName, setSeparatedName] = useState("");
+  const [selectedAliases, setSelectedAliases] = useState<string[]>([]);
 
   const {
     data: response,
@@ -88,6 +106,27 @@ export default function OpportunityDetail() {
       },
     },
   });
+  const refreshIdentity = () => {
+    if (!id) return;
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: getGetRadarCompanyQueryKey(id) }),
+      queryClient.invalidateQueries({ queryKey: getListRadarCompaniesQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: ["/api/v1/review-queue"] }),
+    ]);
+  };
+  const identitySuccess = (message: string) => {
+    toast({ title: "Identity review saved", description: message });
+    setIdentityDialog(null);
+    setSelectedAliases([]);
+    refreshIdentity();
+  };
+  const confirmMutation = useConfirmRadarIdentity({ mutation: { onSuccess: () => identitySuccess("The authoritative identity is confirmed."), onError: () => toast({ title: "Unable to confirm identity", variant: "destructive" }) } });
+  const mergeMutation = useMergeRadarCompanyIdentity({ mutation: { onSuccess: (result) => {
+    identitySuccess("The accounts were merged and the action was audited.");
+    if (result.data.target_company_id) setLocation(`/opportunities/${result.data.target_company_id}`);
+  }, onError: () => toast({ title: "Unable to merge accounts", description: "Review the target and try again.", variant: "destructive" }) } });
+  const separateMutation = useSeparateRadarCompanyIdentity({ mutation: { onSuccess: () => identitySuccess("A separate account was created for the selected aliases."), onError: () => toast({ title: "Unable to separate identity", variant: "destructive" }) } });
+  const { data: companyList } = useListRadarCompanies({ limit: 200 }, { query: { enabled: identityDialog === "merge", queryKey: ["/api/v1/companies", { limit: 200, identityDialog }] } });
 
   if (isLoading) {
     return (
@@ -115,7 +154,7 @@ export default function OpportunityDetail() {
     );
   }
 
-  const { company, signals, observations, recommendation, outcomes } =
+  const { company, signals, observations, recommendation, outcomes, identity_review: identityReview } =
     response.data;
 
   const handleOutcomeSubmit = (type: OutcomeInputOutcomeType, note?: string, amount?: number, occurred_at?: string, signal_key?: string) => {
@@ -146,6 +185,47 @@ export default function OpportunityDetail() {
         companyName={company.name}
         signals={signals}
       />
+      <Dialog open={identityDialog !== null} onOpenChange={(open) => !open && setIdentityDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{identityDialog === "confirm" ? "Confirm authoritative identity" : identityDialog === "merge" ? "Merge duplicate accounts" : "Separate account identity"}</DialogTitle>
+            <DialogDescription>{identityDialog === "confirm" ? "This records a reviewer-approved canonical identifier." : "This is a high-risk operation. It only proceeds after this explicit confirmation and is permanently audited."}</DialogDescription>
+          </DialogHeader>
+          {identityDialog === "confirm" && (
+            <div className="space-y-4">
+              <Select value={identityType} onValueChange={(value) => setIdentityType(value as typeof identityType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="domain">Authoritative domain</SelectItem><SelectItem value="crm_id">CRM ID</SelectItem><SelectItem value="linkedin_url">LinkedIn identity</SelectItem></SelectContent>
+              </Select>
+              <Input value={identityValue} onChange={(event) => setIdentityValue(event.target.value)} placeholder="Enter the verified value" />
+            </div>
+          )}
+          {identityDialog === "merge" && (
+            <div className="space-y-3">
+              <Label>Keep this target account</Label>
+              <Select value={mergeTarget} onValueChange={setMergeTarget}>
+                <SelectTrigger><SelectValue placeholder="Choose the surviving account" /></SelectTrigger>
+                <SelectContent>{companyList?.data.data.filter((candidate) => candidate.id !== id).map((candidate) => <SelectItem key={candidate.id} value={candidate.id}>{candidate.name}{candidate.domain ? ` — ${candidate.domain}` : ""}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
+          {identityDialog === "separate" && (
+            <div className="space-y-4">
+              <Input value={separatedName} onChange={(event) => setSeparatedName(event.target.value)} placeholder="Name of the new account" />
+              <div className="space-y-2"><Label>Aliases to move</Label>{identityReview.aliases.map((alias) => <label key={alias.id} className="flex items-center gap-2 rounded border p-2 text-sm"><Checkbox checked={selectedAliases.includes(alias.id)} onCheckedChange={(checked) => setSelectedAliases((previous) => checked ? [...previous, alias.id] : previous.filter((id) => id !== alias.id))} /> <span className="font-medium">{humanizeLabel(alias.alias_type)}:</span> {alias.alias_value}</label>)}</div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIdentityDialog(null)}>Cancel</Button>
+            <Button variant={identityDialog === "confirm" ? "default" : "destructive"} disabled={confirmMutation.isPending || mergeMutation.isPending || separateMutation.isPending || (identityDialog === "confirm" && !identityValue.trim()) || (identityDialog === "merge" && !mergeTarget) || (identityDialog === "separate" && (!separatedName.trim() || !selectedAliases.length))} onClick={() => {
+              if (!id) return;
+              if (identityDialog === "confirm") confirmMutation.mutate({ id, data: { identity_type: identityType, value: identityValue.trim() } });
+              if (identityDialog === "merge") mergeMutation.mutate({ id, data: { target_company_id: mergeTarget, confirmed: true } });
+              if (identityDialog === "separate") separateMutation.mutate({ id, data: { name: separatedName.trim(), alias_ids: selectedAliases, confirmed: true } });
+            }}>{identityDialog === "confirm" ? "Confirm identity" : identityDialog === "merge" ? "Confirm merge" : "Confirm separation"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div>
         <Link href="/opportunities">
@@ -262,6 +342,19 @@ export default function OpportunityDetail() {
                   </p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+          <Card className="border-amber-200 dark:border-amber-900 shadow-sm">
+            <CardHeader className="pb-3 border-b bg-amber-50/50 dark:bg-amber-950/20">
+              <CardTitle className="text-lg flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-amber-600" /> Identity review</CardTitle>
+              <CardDescription>Review lineage before using this account for outreach.</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-4">
+              <div className="flex items-center justify-between"><span className="text-sm text-muted-foreground">Review status</span><Badge variant="outline" className="capitalize">{humanizeLabel(identityReview.status)}</Badge></div>
+              <div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => { setIdentityValue(company.domain || company.crm_id || company.linkedin_url || ""); setIdentityDialog("confirm"); }}>Confirm identity</Button><Button size="sm" variant="outline" onClick={() => setIdentityDialog("merge")}>Merge duplicate</Button><Button size="sm" variant="outline" onClick={() => setIdentityDialog("separate")}><Split className="mr-1 h-3.5 w-3.5" /> Separate</Button></div>
+              <div><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Known aliases</p>{identityReview.aliases.length ? <div className="space-y-1">{identityReview.aliases.map((alias) => <p key={alias.id} className="text-sm"><span className="font-medium">{humanizeLabel(alias.alias_type)}:</span> {alias.alias_value} <span className="text-xs text-muted-foreground">({alias.source || "manual"})</span></p>)}</div> : <p className="text-sm text-muted-foreground">No aliases recorded.</p>}</div>
+              {identityReview.conflicting_attributes.length > 0 && <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30"><p className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300 mb-2">Conflicting attributes</p>{identityReview.conflicting_attributes.slice(0, 4).map((conflict: any, index) => <p key={index} className="text-xs text-amber-900 dark:text-amber-200">{humanizeLabel(conflict.field)}: “{String(conflict.incoming_value)}” differs from “{String(conflict.canonical_value)}”</p>)}</div>}
+              <div><p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Lineage & audit trail</p>{[...identityReview.actions, ...identityReview.resolution_events].slice(0, 5).map((item: any, index) => <p key={index} className="text-xs text-muted-foreground border-l-2 pl-2 py-1">{humanizeLabel(item.action || item.method)} · {formatDate(item.created_at)}{item.actor ? ` · ${item.actor}` : ""}</p>)}</div>
             </CardContent>
           </Card>
 

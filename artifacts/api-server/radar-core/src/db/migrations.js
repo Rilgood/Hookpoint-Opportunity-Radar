@@ -142,6 +142,34 @@ const migrations = [
           ON connectors(enabled, next_run_at, backoff_until);
       `);
     }
+  },
+  {
+    version: 7,
+    run(db) {
+      addColumn(db, 'companies', 'identity_review_status', "TEXT NOT NULL DEFAULT 'unreviewed'");
+      db.exec(`
+        UPDATE companies
+          SET identity_review_status=CASE
+            WHEN identity_confidence < 0.8 OR domain IS NULL OR opportunity_tier='suppressed' THEN 'needs_review'
+            ELSE 'unreviewed'
+          END
+          WHERE identity_review_status='unreviewed';
+        CREATE INDEX IF NOT EXISTS idx_companies_identity_review
+          ON companies(tenant_id, identity_review_status, identity_confidence);
+        CREATE TABLE IF NOT EXISTS identity_review_actions (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          company_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          actor TEXT NOT NULL,
+          note TEXT,
+          details_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_identity_review_actions_company
+          ON identity_review_actions(tenant_id, company_id, created_at DESC);
+      `);
+    }
   }
 ];
 

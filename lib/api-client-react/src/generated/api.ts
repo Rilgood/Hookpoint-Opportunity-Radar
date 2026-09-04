@@ -22,6 +22,7 @@ import type {
 import type {
   CompanyDetailResponse,
   CompanyListResponse,
+  CompanyResponse,
   ConnectorResponse,
   ConnectorRunInput,
   ConnectorRunResponse,
@@ -31,6 +32,11 @@ import type {
   DataQualityResponse,
   ErrorResponse,
   HealthStatus,
+  IdentityConfirmationInput,
+  IdentityMergeInput,
+  IdentityMergeResponse,
+  IdentitySeparationInput,
+  IdentitySeparationResponse,
   IngestionResponse,
   ListRadarCompaniesParams,
   ListRadarReviewQueueParams,
@@ -455,6 +461,224 @@ export const useRecordRadarOutcome = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRecordRadarOutcomeMutationOptions(options));
+    }
+
+export const getConfirmRadarIdentityUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/companies/${id}/identity/confirm`
+}
+
+/**
+ * @summary Confirm an authoritative account identity
+ */
+export const confirmRadarIdentity = async (id: string,
+    identityConfirmationInput: IdentityConfirmationInput, options?: Parameters<typeof customFetch>[1]): Promise<CompanyResponse> => {
+
+  return customFetch<CompanyResponse>(getConfirmRadarIdentityUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(identityConfirmationInput)
+  }
+);}
+
+
+
+
+
+export const getConfirmRadarIdentityMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmRadarIdentity>>, TError,{id: string;data: BodyType<IdentityConfirmationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmRadarIdentity>>, TError,{id: string;data: BodyType<IdentityConfirmationInput>}, TContext> => {
+
+const mutationKey = ['confirmRadarIdentity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmRadarIdentity>>, {id: string;data: BodyType<IdentityConfirmationInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  confirmRadarIdentity(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmRadarIdentityMutationResult = NonNullable<Awaited<ReturnType<typeof confirmRadarIdentity>>>
+    export type ConfirmRadarIdentityMutationBody = BodyType<IdentityConfirmationInput>
+    export type ConfirmRadarIdentityMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Confirm an authoritative account identity
+ */
+export const useConfirmRadarIdentity = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmRadarIdentity>>, TError,{id: string;data: BodyType<IdentityConfirmationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmRadarIdentity>>,
+        TError,
+        {id: string;data: BodyType<IdentityConfirmationInput>},
+        TContext
+      > => {
+      return useMutation(getConfirmRadarIdentityMutationOptions(options));
+    }
+
+export const getMergeRadarCompanyIdentityUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/companies/${id}/identity/merge`
+}
+
+/**
+ * This high-risk operation only runs when confirmed is true.
+ * @summary Merge this account into a reviewed target account
+ */
+export const mergeRadarCompanyIdentity = async (id: string,
+    identityMergeInput: IdentityMergeInput, options?: Parameters<typeof customFetch>[1]): Promise<IdentityMergeResponse> => {
+
+  return customFetch<IdentityMergeResponse>(getMergeRadarCompanyIdentityUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(identityMergeInput)
+  }
+);}
+
+
+
+
+
+export const getMergeRadarCompanyIdentityMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentityMergeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof mergeRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentityMergeInput>}, TContext> => {
+
+const mutationKey = ['mergeRadarCompanyIdentity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof mergeRadarCompanyIdentity>>, {id: string;data: BodyType<IdentityMergeInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  mergeRadarCompanyIdentity(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MergeRadarCompanyIdentityMutationResult = NonNullable<Awaited<ReturnType<typeof mergeRadarCompanyIdentity>>>
+    export type MergeRadarCompanyIdentityMutationBody = BodyType<IdentityMergeInput>
+    export type MergeRadarCompanyIdentityMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Merge this account into a reviewed target account
+ */
+export const useMergeRadarCompanyIdentity = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentityMergeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof mergeRadarCompanyIdentity>>,
+        TError,
+        {id: string;data: BodyType<IdentityMergeInput>},
+        TContext
+      > => {
+      return useMutation(getMergeRadarCompanyIdentityMutationOptions(options));
+    }
+
+export const getSeparateRadarCompanyIdentityUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/companies/${id}/identity/separate`
+}
+
+/**
+ * This high-risk operation only runs when confirmed is true.
+ * @summary Separate aliases into a new account
+ */
+export const separateRadarCompanyIdentity = async (id: string,
+    identitySeparationInput: IdentitySeparationInput, options?: Parameters<typeof customFetch>[1]): Promise<IdentitySeparationResponse> => {
+
+  return customFetch<IdentitySeparationResponse>(getSeparateRadarCompanyIdentityUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(identitySeparationInput)
+  }
+);}
+
+
+
+
+
+export const getSeparateRadarCompanyIdentityMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof separateRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentitySeparationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof separateRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentitySeparationInput>}, TContext> => {
+
+const mutationKey = ['separateRadarCompanyIdentity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof separateRadarCompanyIdentity>>, {id: string;data: BodyType<IdentitySeparationInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  separateRadarCompanyIdentity(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SeparateRadarCompanyIdentityMutationResult = NonNullable<Awaited<ReturnType<typeof separateRadarCompanyIdentity>>>
+    export type SeparateRadarCompanyIdentityMutationBody = BodyType<IdentitySeparationInput>
+    export type SeparateRadarCompanyIdentityMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Separate aliases into a new account
+ */
+export const useSeparateRadarCompanyIdentity = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof separateRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentitySeparationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof separateRadarCompanyIdentity>>,
+        TError,
+        {id: string;data: BodyType<IdentitySeparationInput>},
+        TContext
+      > => {
+      return useMutation(getSeparateRadarCompanyIdentityMutationOptions(options));
     }
 
 export const getGetRadarOutcomeAnalyticsUrl = () => {

@@ -34,6 +34,7 @@ export default function Opportunities() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [tier, setTier] = useState<string>("all");
+  const [identityReviewStatus, setIdentityReviewStatus] = useState<string>("all");
   const [page, setPage] = useState(1);
 
   // Use a simple timeout for debouncing to avoid an external hook dependency
@@ -53,12 +54,13 @@ export default function Opportunities() {
     {
       q: debouncedQ || undefined,
       tier: tier !== "all" ? (tier as any) : undefined,
+      identity_review_status: identityReviewStatus !== "all" ? (identityReviewStatus as any) : undefined,
       page,
       limit: 20,
     },
     {
       query: {
-        queryKey: ["/api/v1/companies", { q: debouncedQ, tier, page }],
+        queryKey: ["/api/v1/companies", { q: debouncedQ, tier, identityReviewStatus, page }],
       },
     },
   );
@@ -66,6 +68,7 @@ export default function Opportunities() {
   const exportUrl = `/api/v1/export/companies.csv?${new URLSearchParams({
     ...(debouncedQ ? { q: debouncedQ } : {}),
     ...(tier !== "all" ? { tier } : {}),
+    ...(identityReviewStatus !== "all" ? { identity_review_status: identityReviewStatus } : {}),
   }).toString()}`;
 
   return (
@@ -120,6 +123,16 @@ export default function Opportunities() {
               <SelectItem value="watch">Watch</SelectItem>
               <SelectItem value="cold">Cold</SelectItem>
               <SelectItem value="suppressed">Suppressed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={identityReviewStatus} onValueChange={(value) => { setIdentityReviewStatus(value); setPage(1); }}>
+            <SelectTrigger className="w-full sm:w-[190px]" data-testid="select-identity-review-filter"><SelectValue placeholder="Identity review" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All identity states</SelectItem>
+              <SelectItem value="needs_review">Needs review</SelectItem>
+              <SelectItem value="unreviewed">Unreviewed</SelectItem>
+              <SelectItem value="confirmed">Confirmed</SelectItem>
+              <SelectItem value="separated">Separated</SelectItem>
             </SelectContent>
           </Select>
           <Button
@@ -183,6 +196,7 @@ export default function Opportunities() {
                           {company.domain}
                         </div>
                       )}
+                      {company.identity_review_status === "needs_review" && <Badge variant="outline" className="mt-1 text-[10px] text-amber-700 border-amber-300">Identity review needed</Badge>}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2 font-mono">

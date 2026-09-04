@@ -9,6 +9,7 @@ import type { Company } from './company';
 import type { CompanyDetailEventsItem } from './companyDetailEventsItem';
 import type { CompanyDetailOutcomesItem } from './companyDetailOutcomesItem';
 import type { CompanyDetailScoreHistoryItem } from './companyDetailScoreHistoryItem';
+import type { IdentityReview } from './identityReview';
 import type { Observation } from './observation';
 import type { Person } from './person';
 import type { Recommendation } from './recommendation';
@@ -19,6 +20,7 @@ export interface CompanyDetail {
   signals: Signal[];
   observations: Observation[];
   people: Person[];
+  identity_review: IdentityReview;
   recommendation?: Recommendation | null;
   events: CompanyDetailEventsItem[];
   outcomes: CompanyDetailOutcomesItem[];

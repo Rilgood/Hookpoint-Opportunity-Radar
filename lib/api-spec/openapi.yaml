@@ -50,6 +50,10 @@ paths:
           schema:
             type: string
         - in: query
+          name: identity_review_status
+          schema:
+            $ref: "#/components/schemas/IdentityReviewStatus"
+        - in: query
           name: min_score
           schema:
             type: number
@@ -117,6 +121,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OutcomeResponse"
+  /v1/companies/{id}/identity/confirm:
+    post:
+      operationId: confirmRadarIdentity
+      tags: [radar]
+      summary: Confirm an authoritative account identity
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityConfirmationInput"
+      responses:
+        "200":
+          description: Identity confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+  /v1/companies/{id}/identity/merge:
+    post:
+      operationId: mergeRadarCompanyIdentity
+      tags: [radar]
+      summary: Merge this account into a reviewed target account
+      description: This high-risk operation only runs when confirmed is true.
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityMergeInput"
+      responses:
+        "200":
+          description: Accounts merged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityMergeResponse"
+  /v1/companies/{id}/identity/separate:
+    post:
+      operationId: separateRadarCompanyIdentity
+      tags: [radar]
+      summary: Separate aliases into a new account
+      description: This high-risk operation only runs when confirmed is true.
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentitySeparationInput"
+      responses:
+        "200":
+          description: Identity separated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentitySeparationResponse"
   /v1/analytics/outcomes:
     get:
       operationId: getRadarOutcomeAnalytics
@@ -314,6 +380,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReviewQueueResponse"
 components:
+  parameters:
+    CompanyId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
@@ -335,6 +408,9 @@ components:
     CompanyStatus:
       type: string
       enum: [prospect, accepted, rejected, contacted, replied, meeting, opportunity, customer, lost, disqualified]
+    IdentityReviewStatus:
+      type: string
+      enum: [unreviewed, needs_review, confirmed, separated]
     Company:
       type: object
       required:
@@ -345,6 +421,7 @@ components:
         - monitoring_tier
         - identity_confidence
         - identity_method
+        - identity_review_status
         - fit_score
         - need_score
         - intent_score
@@ -360,6 +437,8 @@ components:
         domain:
           type: ["string", "null"]
         website_url:
+          type: ["string", "null"]
+        linkedin_url:
           type: ["string", "null"]
         industry:
           type: string
@@ -385,6 +464,8 @@ components:
           type: number
         identity_method:
           type: string
+        identity_review_status:
+          $ref: "#/components/schemas/IdentityReviewStatus"
         fit_score:
           type: number
         need_score:
@@ -401,6 +482,8 @@ components:
           $ref: "#/components/schemas/OpportunityTier"
         owner_name:
           type: ["string", "null"]
+        crm_id:
+          type: ["string", "null"]
         last_observed_at:
           type: ["string", "null"]
           format: date-time
@@ -413,6 +496,82 @@ components:
         updated_at:
           type: string
           format: date-time
+    CompanyResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/Company"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    IdentityConfirmationInput:
+      type: object
+      required: [identity_type, value]
+      properties:
+        identity_type:
+          type: string
+          enum: [domain, crm_id, linkedin_url]
+        value:
+          type: string
+        note:
+          type: string
+    IdentityMergeInput:
+      type: object
+      required: [target_company_id, confirmed]
+      properties:
+        target_company_id:
+          type: string
+        confirmed:
+          type: boolean
+          description: Must be true; prevents accidental merges.
+        note:
+          type: string
+    IdentitySeparationInput:
+      type: object
+      required: [name, alias_ids, confirmed]
+      properties:
+        name:
+          type: string
+        alias_ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        confirmed:
+          type: boolean
+          description: Must be true; prevents accidental identity separation.
+        note:
+          type: string
+    IdentityOperation:
+      type: object
+      required: [source_company_id]
+      properties:
+        source_company_id:
+          type: string
+        target_company_id:
+          type: string
+        separated_company_id:
+          type: string
+        merged:
+          type: boolean
+        separated:
+          type: boolean
+    IdentityMergeResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/IdentityOperation"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+    IdentitySeparationResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/IdentityOperation"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
     DashboardSummary:
       type: object
       required: [companies, hot, warm, watch, average_score, active_signals, new_signals_7d, connectors, top_industries, tiers]
@@ -611,9 +770,44 @@ components:
           type: number
         summary:
           type: string
+    IdentityReviewAlias:
+      type: object
+      required: [id, alias_type, alias_value, normalized_value, created_at]
+      properties:
+        id: { type: string }
+        alias_type: { type: string }
+        alias_value: { type: string }
+        normalized_value: { type: string }
+        source: { type: ["string", "null"] }
+        created_at: { type: string, format: date-time }
+    IdentityReview:
+      type: object
+      required: [status, aliases, resolution_events, conflicting_attributes, actions]
+      properties:
+        status:
+          $ref: "#/components/schemas/IdentityReviewStatus"
+        aliases:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdentityReviewAlias"
+        resolution_events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        conflicting_attributes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        actions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
     CompanyDetail:
       type: object
-      required: [company, signals, observations, people, events, outcomes, score_history]
+      required: [company, signals, observations, people, events, outcomes, score_history, identity_review]
       properties:
         company:
           $ref: "#/components/schemas/Company"
@@ -629,6 +823,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Person"
+        identity_review:
+          $ref: "#/components/schemas/IdentityReview"
         recommendation:
           oneOf:
             - $ref: "#/components/schemas/Recommendation"

@@ -41,6 +41,16 @@ export const CompanyStatus = {
   disqualified: 'disqualified',
 } as const;
 
+export type IdentityReviewStatus = typeof IdentityReviewStatus[keyof typeof IdentityReviewStatus];
+
+
+export const IdentityReviewStatus = {
+  unreviewed: 'unreviewed',
+  needs_review: 'needs_review',
+  confirmed: 'confirmed',
+  separated: 'separated',
+} as const;
+
 export interface Company {
   id: string;
   name: string;
@@ -48,6 +58,8 @@ export interface Company {
   domain?: string | null;
   /** @nullable */
   website_url?: string | null;
+  /** @nullable */
+  linkedin_url?: string | null;
   industry: string;
   /** @nullable */
   subindustry?: string | null;
@@ -67,6 +79,7 @@ export interface Company {
   monitoring_tier: string;
   identity_confidence: number;
   identity_method: string;
+  identity_review_status: IdentityReviewStatus;
   fit_score: number;
   need_score: number;
   intent_score: number;
@@ -77,11 +90,67 @@ export interface Company {
   /** @nullable */
   owner_name?: string | null;
   /** @nullable */
+  crm_id?: string | null;
+  /** @nullable */
   last_observed_at?: string | null;
   /** @nullable */
   next_refresh_at?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface CompanyResponse {
+  data: Company;
+  meta: ResponseMeta;
+}
+
+export type IdentityConfirmationInputIdentityType = typeof IdentityConfirmationInputIdentityType[keyof typeof IdentityConfirmationInputIdentityType];
+
+
+export const IdentityConfirmationInputIdentityType = {
+  domain: 'domain',
+  crm_id: 'crm_id',
+  linkedin_url: 'linkedin_url',
+} as const;
+
+export interface IdentityConfirmationInput {
+  identity_type: IdentityConfirmationInputIdentityType;
+  value: string;
+  note?: string;
+}
+
+export interface IdentityMergeInput {
+  target_company_id: string;
+  /** Must be true; prevents accidental merges. */
+  confirmed: boolean;
+  note?: string;
+}
+
+export interface IdentitySeparationInput {
+  name: string;
+  /** @minItems 1 */
+  alias_ids: string[];
+  /** Must be true; prevents accidental identity separation. */
+  confirmed: boolean;
+  note?: string;
+}
+
+export interface IdentityOperation {
+  source_company_id: string;
+  target_company_id?: string;
+  separated_company_id?: string;
+  merged?: boolean;
+  separated?: boolean;
+}
+
+export interface IdentityMergeResponse {
+  data: IdentityOperation;
+  meta: ResponseMeta;
+}
+
+export interface IdentitySeparationResponse {
+  data: IdentityOperation;
+  meta: ResponseMeta;
 }
 
 export type DashboardSummaryConnectors = {
@@ -198,6 +267,30 @@ export interface Recommendation {
   proof_points?: RecommendationProofPoint[];
 }
 
+export interface IdentityReviewAlias {
+  id: string;
+  alias_type: string;
+  alias_value: string;
+  normalized_value: string;
+  /** @nullable */
+  source?: string | null;
+  created_at: string;
+}
+
+export type IdentityReviewResolutionEventsItem = { [key: string]: unknown };
+
+export type IdentityReviewConflictingAttributesItem = { [key: string]: unknown };
+
+export type IdentityReviewActionsItem = { [key: string]: unknown };
+
+export interface IdentityReview {
+  status: IdentityReviewStatus;
+  aliases: IdentityReviewAlias[];
+  resolution_events: IdentityReviewResolutionEventsItem[];
+  conflicting_attributes: IdentityReviewConflictingAttributesItem[];
+  actions: IdentityReviewActionsItem[];
+}
+
 export type CompanyDetailEventsItem = { [key: string]: unknown };
 
 export type CompanyDetailOutcomesItem = { [key: string]: unknown };
@@ -209,6 +302,7 @@ export interface CompanyDetail {
   signals: Signal[];
   observations: Observation[];
   people: Person[];
+  identity_review: IdentityReview;
   recommendation?: Recommendation | null;
   events: CompanyDetailEventsItem[];
   outcomes: CompanyDetailOutcomesItem[];
@@ -653,6 +747,7 @@ export interface ReviewQueueResponse {
 export type ListRadarCompaniesParams = {
 tier?: OpportunityTier;
 q?: string;
+identity_review_status?: IdentityReviewStatus;
 /**
  * @minimum 0
  * @maximum 100

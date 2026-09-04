@@ -40,6 +40,11 @@ export function listCompanies(db, tenantId, query = {}) {
   if (query.industry) { where.push('industry = ?'); params.push(query.industry); }
   if (query.monitoring_tier) { where.push('monitoring_tier = ?'); params.push(query.monitoring_tier); }
   if (query.status) { where.push('status = ?'); params.push(query.status); }
+  if (query.identity_review_status) {
+    const allowed = new Set(['unreviewed', 'needs_review', 'confirmed', 'separated']);
+    if (!allowed.has(query.identity_review_status)) throw new AppError(400, 'invalid_identity_review_status', 'Unsupported identity review status.');
+    where.push('identity_review_status = ?'); params.push(query.identity_review_status);
+  }
   if (query.min_score != null) {
     const score = Number(query.min_score);
     if (!Number.isFinite(score) || score < 0 || score > 100) throw new AppError(400, 'invalid_min_score', 'min_score must be between 0 and 100.');
@@ -78,7 +83,16 @@ export function companyDetail(db, tenantId, companyId) {
     const { proof_points_json: proofPointsJson, ...fields } = recommendation;
     parsedRecommendation = { ...fields, proof_points: json(proofPointsJson, []) };
   }
-  return { company, signals, observations, people, recommendation: parsedRecommendation, events, outcomes, score_history: scoreHistory };
+  const aliases = db.all('SELECT id, alias_type, alias_value, normalized_value, source, created_at FROM company_aliases WHERE tenant_id=? AND company_id=? ORDER BY alias_type, created_at', [tenantId, companyId]);
+  const resolutionEvents = db.all('SELECT source, method, confidence, incoming_name, incoming_domain, created_at FROM entity_resolution_events WHERE tenant_id=? AND company_id=? ORDER BY created_at DESC LIMIT 100', [tenantId, companyId]);
+  const reviewActions = db.all('SELECT action, actor, note, details_json, created_at FROM identity_review_actions WHERE tenant_id=? AND company_id=? ORDER BY created_at DESC LIMIT 100', [tenantId, companyId])
+    .map(({ details_json: detailsJson, ...action }) => ({ ...action, details: json(detailsJson, {}) }));
+  const conflicts = resolutionEvents.flatMap((event) => [
+    event.incoming_name && normalizeConflict('name', company.name, event.incoming_name, event),
+    event.incoming_domain && normalizeConflict('domain', company.domain, event.incoming_domain, event)
+  ]).filter(Boolean);
+  return { company, signals, observations, people, recommendation: parsedRecommendation, events, outcomes, score_history: scoreHistory,
+    identity_review: { status: company.identity_review_status, aliases, resolution_events: resolutionEvents, conflicting_attributes: conflicts, actions: reviewActions } };
 }
 
 export function listSignals(db, tenantId, query = {}) {
@@ -181,9 +195,9 @@ export function ingestionRejections(db, tenantId, query = {}) {
 
 export function reviewQueue(db, tenantId, query = {}) {
   const limit = positiveInteger(query.limit, 100, 200);
-  return db.all(`SELECT id, name, domain, industry, city, state, identity_confidence, identity_method,
+  return db.all(`SELECT id, name, domain, industry, city, state, identity_confidence, identity_method, identity_review_status,
       opportunity_score, opportunity_tier, last_observed_at
-    FROM companies WHERE tenant_id=? AND (identity_confidence<0.8 OR domain IS NULL OR opportunity_tier='suppressed')
+    FROM companies WHERE tenant_id=? AND identity_review_status='needs_review'
     ORDER BY opportunity_tier='suppressed' DESC, identity_confidence ASC, opportunity_score DESC LIMIT ?`, [tenantId, limit]);
 }
 
@@ -198,6 +212,10 @@ export function connectorRuns(db, tenantId, query = {}) {
 
 function parseSignal(row) { const { metadata_json: metadataJson, ...signal } = row; return { ...signal, metadata: json(metadataJson) }; }
 function parseObservation(row) { const { attributes_json: attributesJson, ...observation } = row; return { ...observation, attributes: json(attributesJson) }; }
+function normalizeConflict(field, canonical, incoming, event) {
+  if (!canonical || String(canonical).toLowerCase() === String(incoming).toLowerCase()) return null;
+  return { field, canonical_value: canonical, incoming_value: incoming, source: event.source, observed_at: event.created_at };
+}
 function positiveInteger(value, fallback, maximum) {
   if (value == null || value === '') return fallback;
   const number = Number(value);

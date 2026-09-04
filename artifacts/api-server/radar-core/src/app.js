@@ -1,7 +1,7 @@
 import { config, runtimeIssues } from './config.js';
 import { AppError, id, isPlainObject, json, nowIso } from './lib.js';
 import { bootstrap, syncConnectorCatalog } from './services/bootstrap.js';
-import { createCompany, deleteCompany, updateCompany } from './services/entities.js';
+import { confirmIdentity, createCompany, deleteCompany, mergeCompanies, separateCompany, updateCompany } from './services/entities.js';
 import { ingestBatch } from './services/ingestion.js';
 import { companyDetail, connectorRuns, dashboardSummary, dataQuality, exportCompaniesCsv, ingestionRejections, listCompanies, listConnectors, listSignals, reviewQueue } from './services/queries.js';
 import { rescoreAll, rescoreCompany, rescoreDueCompanies } from './services/signals.js';
@@ -40,6 +40,24 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
   router.get('/api/v1/dashboard', async ({ auth }) => dashboardSummary(db, auth.tenantId));
   router.get('/api/v1/companies', async ({ auth, query }) => listCompanies(db, auth.tenantId, query));
   router.get('/api/v1/companies/:id', async ({ auth, params }) => companyDetail(db, auth.tenantId, params.id));
+  router.post('/api/v1/companies/:id/identity/confirm', async ({ auth, params, body, requestId }) => {
+    requireScope(auth, 'write');
+    const company = db.transaction(() => confirmIdentity(db, auth.tenantId, params.id, body, auth.actor));
+    recordAudit(db, auth.tenantId, { action: 'identity.confirmed', actor: auth.actor, resourceType: 'company', resourceId: params.id, requestId, details: { identity_type: body?.identity_type } });
+    return company;
+  });
+  router.post('/api/v1/companies/:id/identity/merge', async ({ auth, params, body, requestId }) => {
+    requireScope(auth, 'admin');
+    const result = db.transaction(() => mergeCompanies(db, auth.tenantId, params.id, body, auth.actor));
+    recordAudit(db, auth.tenantId, { action: 'identity.merged', actor: auth.actor, resourceType: 'company', resourceId: params.id, requestId, details: { target_company_id: body?.target_company_id } });
+    return result;
+  });
+  router.post('/api/v1/companies/:id/identity/separate', async ({ auth, params, body, requestId }) => {
+    requireScope(auth, 'admin');
+    const result = db.transaction(() => separateCompany(db, auth.tenantId, params.id, body, auth.actor));
+    recordAudit(db, auth.tenantId, { action: 'identity.separated', actor: auth.actor, resourceType: 'company', resourceId: params.id, requestId, details: { alias_ids: body?.alias_ids } });
+    return result;
+  });
   router.post('/api/v1/companies', async ({ auth, body, requestId }) => {
     requireScope(auth, 'write');
     const company = db.transaction(() => {
