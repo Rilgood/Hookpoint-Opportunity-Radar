@@ -47,3 +47,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# SQLite write-ahead log runtime state
+*.sqlite-shm
+*.sqlite-wal
