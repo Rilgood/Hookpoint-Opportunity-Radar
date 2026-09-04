@@ -13,7 +13,7 @@
     "reset": "node scripts/reset.js",
     "test": "node --test --test-reporter=spec",
     "verify": "bash scripts/prove_it.sh",
-    "check": "find src api public test -name '*.js' -type f -print0 | xargs -0 -n1 node --check"
+    "check": "bash -o pipefail -c 'for dir in src test; do [ -d \"$dir\" ] || { echo \"check: expected source directory \\\"$dir\\\" is missing\" >&2; exit 1; }; done; find src test -name \"*.js\" -type f -print0 | xargs -0 -n1 node --check'"
   },
   "license": "UNLICENSED"
 }
