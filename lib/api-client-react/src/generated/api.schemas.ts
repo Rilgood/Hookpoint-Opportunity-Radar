@@ -267,6 +267,19 @@ export interface Recommendation {
   proof_points?: RecommendationProofPoint[];
 }
 
+export interface MergedRecommendationContext {
+  source_company_id: string;
+  source_name: string;
+  merged_at: string;
+  offer: string;
+  /** @nullable */
+  headline?: string | null;
+  rationale: string;
+  outreach_angle: string;
+  next_action: string;
+  proof_points: RecommendationProofPoint[];
+}
+
 export interface IdentityReviewAlias {
   id: string;
   alias_type: string;
@@ -304,6 +317,8 @@ export interface CompanyDetail {
   people: Person[];
   identity_review: IdentityReview;
   recommendation?: Recommendation | null;
+  /** Historical recommendation context retained from accounts merged into this account. These are not active recommendations. */
+  merged_recommendation_contexts: MergedRecommendationContext[];
   events: CompanyDetailEventsItem[];
   outcomes: CompanyDetailOutcomesItem[];
   score_history: CompanyDetailScoreHistoryItem[];
@@ -428,6 +443,103 @@ export interface OutcomeAnalyticsResponse {
 }
 
 export type ScoreWeightDimension = typeof ScoreWeightDimension[keyof typeof ScoreWeightDimension];
+
+
+export const ScoreWeightDimension = {
+  fit: 'fit',
+  need: 'need',
+  intent: 'intent',
+  timing: 'timing',
+} as const;
+
+export interface ScoreWeight {
+  dimension: ScoreWeightDimension;
+  before: number;
+  after: number;
+  change: number;
+}
+
+export interface ScoreMetrics {
+  auc: number;
+  top_quartile_qualified_rate: number;
+}
+
+export interface ScoreCalibrationGuardrails {
+  cohort: string;
+  holdout_accounts: number;
+  qualified_accounts: number;
+  negative_accounts: number;
+  minimum_sample: number;
+  min_each_class: number;
+  training_accounts: number;
+  training_qualified_accounts: number;
+  training_negative_accounts: number;
+  minimum_training_sample: number;
+  min_training_each_class: number;
+  scored_holdout_accounts?: number;
+  scored_training_accounts?: number;
+}
+
+export type ScoreVersionStatus = typeof ScoreVersionStatus[keyof typeof ScoreVersionStatus];
+
+
+export const ScoreVersionStatus = {
+  proposed: 'proposed',
+  approved: 'approved',
+  superseded: 'superseded',
+} as const;
+
+export type ScoreVersionConfig = { [key: string]: unknown };
+
+export type ScoreVersionEvaluation = {
+  guardrails: ScoreCalibrationGuardrails;
+  before: ScoreMetrics;
+  after: ScoreMetrics;
+  explanation: ScoreWeight[];
+};
+
+export interface ScoreVersion {
+  id: string;
+  version: string;
+  status: ScoreVersionStatus;
+  base_version: string;
+  config: ScoreVersionConfig;
+  evaluation: ScoreVersionEvaluation;
+  created_at: string;
+  created_by: string;
+  /** @nullable */
+  approved_at?: string | null;
+  /** @nullable */
+  approved_by?: string | null;
+}
+
+export type ScoreCalibrationEvaluationStatus = typeof ScoreCalibrationEvaluationStatus[keyof typeof ScoreCalibrationEvaluationStatus];
+
+
+export const ScoreCalibrationEvaluationStatus = {
+  blocked: 'blocked',
+  ready: 'ready',
+} as const;
+
+export interface ScoreCalibrationEvaluation {
+  status: ScoreCalibrationEvaluationStatus;
+  reason?: string;
+  guardrails: ScoreCalibrationGuardrails;
+  before?: ScoreMetrics;
+  after?: ScoreMetrics;
+  recommendation?: ScoreVersion;
+}
+
+export interface ScoreCalibrationEvaluationResponse {
+  data: ScoreCalibrationEvaluation;
+  meta: ResponseMeta;
+}
+
+export interface ScoreVersionResponse {
+  data: ScoreVersion;
+  meta: ResponseMeta;
+}
+
 export interface ObservationCompanyInput {
   name: string;
   domain?: string;
@@ -791,97 +903,3 @@ export type ListRadarReviewQueueParams = {
  */
 limit?: number;
 };
-
-
-export type ScoreVersionEvaluation = {
-  guardrails: ScoreCalibrationGuardrails;
-  before: ScoreMetrics;
-  after: ScoreMetrics;
-  explanation: ScoreWeight[];
-};
-
-export type ScoreCalibrationEvaluationStatus = typeof ScoreCalibrationEvaluationStatus[keyof typeof ScoreCalibrationEvaluationStatus];
-
-export type ScoreVersionStatus = typeof ScoreVersionStatus[keyof typeof ScoreVersionStatus];
-
-export interface ScoreMetrics {
-  auc: number;
-  top_quartile_qualified_rate: number;
-}
-
-export const ScoreWeightDimension = {
-  fit: 'fit',
-  need: 'need',
-  intent: 'intent',
-  timing: 'timing',
-} as const;
-
-export interface ScoreCalibrationGuardrails {
-  cohort: string;
-  holdout_accounts: number;
-  qualified_accounts: number;
-  negative_accounts: number;
-  minimum_sample: number;
-  min_each_class: number;
-  training_accounts: number;
-  training_qualified_accounts: number;
-  training_negative_accounts: number;
-  minimum_training_sample: number;
-  min_training_each_class: number;
-  scored_holdout_accounts?: number;
-  scored_training_accounts?: number;
-}
-
-export const ScoreVersionStatus = {
-  proposed: 'proposed',
-  approved: 'approved',
-  superseded: 'superseded',
-} as const;
-
-export interface ScoreVersion {
-  id: string;
-  version: string;
-  status: ScoreVersionStatus;
-  base_version: string;
-  config: ScoreVersionConfig;
-  evaluation: ScoreVersionEvaluation;
-  created_at: string;
-  created_by: string;
-  /** @nullable */
-  approved_at?: string | null;
-  /** @nullable */
-  approved_by?: string | null;
-}
-
-export interface ScoreVersionResponse {
-  data: ScoreVersion;
-  meta: ResponseMeta;
-}
-
-export interface ScoreCalibrationEvaluationResponse {
-  data: ScoreCalibrationEvaluation;
-  meta: ResponseMeta;
-}
-
-export interface ScoreCalibrationEvaluation {
-  status: ScoreCalibrationEvaluationStatus;
-  reason?: string;
-  guardrails: ScoreCalibrationGuardrails;
-  before?: ScoreMetrics;
-  after?: ScoreMetrics;
-  recommendation?: ScoreVersion;
-}
-
-export type ScoreVersionConfig = { [key: string]: unknown };
-
-export const ScoreCalibrationEvaluationStatus = {
-  blocked: 'blocked',
-  ready: 'ready',
-} as const;
-
-export interface ScoreWeight {
-  dimension: ScoreWeightDimension;
-  before: number;
-  after: number;
-  change: number;
-}

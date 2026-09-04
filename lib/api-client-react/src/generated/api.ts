@@ -62,6 +62,7 @@ type AwaitedInput<T> = PromiseLike<T> | T;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
+
 const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
   const result = { queryKey } as T & { queryKey: K };
   for (const key of Object.keys(query)) {
@@ -78,6 +79,8 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 export const getHealthCheckUrl = () => {
+
+
 
 
   return `/api/healthz`
@@ -98,6 +101,9 @@ export const healthCheck = async ( options?: Parameters<typeof customFetch>[1]):
 );}
 
 
+
+
+
 export const getHealthCheckQueryKey = () => {
     return [
     `/api/healthz`
@@ -113,7 +119,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getHealthCheckQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof healthCheck>>> = ({ signal }) => healthCheck({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof healthCheck>>, TError, TData> & { queryKey: QueryKey }
@@ -138,9 +148,9 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
 export const getGetRadarDashboardUrl = () => {
+
+
 
 
   return `/api/v1/dashboard`
@@ -161,6 +171,9 @@ export const getRadarDashboard = async ( options?: Parameters<typeof customFetch
 );}
 
 
+
+
+
 export const getGetRadarDashboardQueryKey = () => {
     return [
     `/api/v1/dashboard`
@@ -176,7 +189,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetRadarDashboardQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getRadarDashboard>>> = ({ signal }) => getRadarDashboard({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRadarDashboard>>, TError, TData> & { queryKey: QueryKey }
@@ -201,8 +218,6 @@ export function useGetRadarDashboard<TData = Awaited<ReturnType<typeof getRadarD
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
 export const getListRadarCompaniesUrl = (params?: ListRadarCompaniesParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -233,6 +248,9 @@ export const listRadarCompanies = async (params?: ListRadarCompaniesParams, opti
 );}
 
 
+
+
+
 export const getListRadarCompaniesQueryKey = (params?: ListRadarCompaniesParams,) => {
     return [
     `/api/v1/companies`, ...(params ? [params] : [])
@@ -248,7 +266,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getListRadarCompaniesQueryKey(params);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listRadarCompanies>>> = ({ signal }) => listRadarCompanies(params, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRadarCompanies>>, TError, TData> & { queryKey: QueryKey }
@@ -273,9 +295,9 @@ export function useListRadarCompanies<TData = Awaited<ReturnType<typeof listRada
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
 export const getGetRadarCompanyUrl = (id: string,) => {
+
+
 
 
   return `/api/v1/companies/${id}`
@@ -296,6 +318,9 @@ export const getRadarCompany = async (id: string, options?: Parameters<typeof cu
 );}
 
 
+
+
+
 export const getGetRadarCompanyQueryKey = (id: string,) => {
     return [
     `/api/v1/companies/${id}`
@@ -311,7 +336,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetRadarCompanyQueryKey(id);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getRadarCompany>>> = ({ signal }) => getRadarCompany(id, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRadarCompany>>, TError, TData> & { queryKey: QueryKey }
@@ -338,7 +367,14 @@ export function useGetRadarCompany<TData = Awaited<ReturnType<typeof getRadarCom
 }
 
 
+
+
+
+
+
 export const getRecordRadarOutcomeUrl = (id: string,) => {
+
+
 
 
   return `/api/v1/companies/${id}/outcomes`
@@ -360,6 +396,9 @@ export const recordRadarOutcome = async (id: string,
 );}
 
 
+
+
+
 export const getRecordRadarOutcomeMutationOptions = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordRadarOutcome>>, TError,{id: string;data: BodyType<OutcomeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof recordRadarOutcome>>, TError,{id: string;data: BodyType<OutcomeInput>}, TContext> => {
@@ -372,11 +411,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordRadarOutcome>>, {id: string;data: BodyType<OutcomeInput>}> = (props) => {
           const {id,data} = props ?? {};
 
           return  recordRadarOutcome(id,data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -402,6 +447,8 @@ export const useRecordRadarOutcome = <TError = ErrorType<unknown>,
 export const getConfirmRadarIdentityUrl = (id: string,) => {
 
 
+
+
   return `/api/v1/companies/${id}/identity/confirm`
 }
 
@@ -421,6 +468,9 @@ export const confirmRadarIdentity = async (id: string,
 );}
 
 
+
+
+
 export const getConfirmRadarIdentityMutationOptions = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmRadarIdentity>>, TError,{id: string;data: BodyType<IdentityConfirmationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof confirmRadarIdentity>>, TError,{id: string;data: BodyType<IdentityConfirmationInput>}, TContext> => {
@@ -433,11 +483,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmRadarIdentity>>, {id: string;data: BodyType<IdentityConfirmationInput>}> = (props) => {
           const {id,data} = props ?? {};
 
           return  confirmRadarIdentity(id,data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -463,6 +519,8 @@ export const useConfirmRadarIdentity = <TError = ErrorType<unknown>,
 export const getMergeRadarCompanyIdentityUrl = (id: string,) => {
 
 
+
+
   return `/api/v1/companies/${id}/identity/merge`
 }
 
@@ -483,6 +541,9 @@ export const mergeRadarCompanyIdentity = async (id: string,
 );}
 
 
+
+
+
 export const getMergeRadarCompanyIdentityMutationOptions = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentityMergeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof mergeRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentityMergeInput>}, TContext> => {
@@ -495,11 +556,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof mergeRadarCompanyIdentity>>, {id: string;data: BodyType<IdentityMergeInput>}> = (props) => {
           const {id,data} = props ?? {};
 
           return  mergeRadarCompanyIdentity(id,data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -525,6 +592,8 @@ export const useMergeRadarCompanyIdentity = <TError = ErrorType<unknown>,
 export const getSeparateRadarCompanyIdentityUrl = (id: string,) => {
 
 
+
+
   return `/api/v1/companies/${id}/identity/separate`
 }
 
@@ -545,6 +614,9 @@ export const separateRadarCompanyIdentity = async (id: string,
 );}
 
 
+
+
+
 export const getSeparateRadarCompanyIdentityMutationOptions = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof separateRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentitySeparationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof separateRadarCompanyIdentity>>, TError,{id: string;data: BodyType<IdentitySeparationInput>}, TContext> => {
@@ -557,11 +629,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof separateRadarCompanyIdentity>>, {id: string;data: BodyType<IdentitySeparationInput>}> = (props) => {
           const {id,data} = props ?? {};
 
           return  separateRadarCompanyIdentity(id,data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -587,6 +665,8 @@ export const useSeparateRadarCompanyIdentity = <TError = ErrorType<unknown>,
 export const getGetRadarOutcomeAnalyticsUrl = () => {
 
 
+
+
   return `/api/v1/analytics/outcomes`
 }
 
@@ -605,6 +685,9 @@ export const getRadarOutcomeAnalytics = async ( options?: Parameters<typeof cust
 );}
 
 
+
+
+
 export const getGetRadarOutcomeAnalyticsQueryKey = () => {
     return [
     `/api/v1/analytics/outcomes`
@@ -620,7 +703,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetRadarOutcomeAnalyticsQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getRadarOutcomeAnalytics>>> = ({ signal }) => getRadarOutcomeAnalytics({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRadarOutcomeAnalytics>>, TError, TData> & { queryKey: QueryKey }
@@ -646,12 +733,157 @@ export function useGetRadarOutcomeAnalytics<TData = Awaited<ReturnType<typeof ge
   return withQueryKey(query, queryOptions.queryKey);
 }
 
+
+
+
+
+
+
 export const getEvaluateRadarScoreCalibrationUrl = () => {
+
+
 
 
   return `/api/v1/analytics/outcomes/evaluate`
 }
+
+/**
+ * @summary Evaluate a guarded score-weight recommendation on a recent holdout cohort
+ */
+export const evaluateRadarScoreCalibration = async ( options?: Parameters<typeof customFetch>[1]): Promise<ScoreCalibrationEvaluationResponse> => {
+
+  return customFetch<ScoreCalibrationEvaluationResponse>(getEvaluateRadarScoreCalibrationUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getEvaluateRadarScoreCalibrationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>, TError,void, TContext> => {
+
+const mutationKey = ['evaluateRadarScoreCalibration'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>, void> = () => {
+
+
+          return  evaluateRadarScoreCalibration(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EvaluateRadarScoreCalibrationMutationResult = NonNullable<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>>
+
+    export type EvaluateRadarScoreCalibrationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Evaluate a guarded score-weight recommendation on a recent holdout cohort
+ */
+export const useEvaluateRadarScoreCalibration = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getEvaluateRadarScoreCalibrationMutationOptions(options));
+    }
+
+export const getApproveRadarScoreCalibrationUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/analytics/outcomes/recommendations/${id}/approve`
+}
+
+/**
+ * @summary Approve a pending score version after operator review
+ */
+export const approveRadarScoreCalibration = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ScoreVersionResponse> => {
+
+  return customFetch<ScoreVersionResponse>(getApproveRadarScoreCalibrationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getApproveRadarScoreCalibrationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveRadarScoreCalibration>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveRadarScoreCalibration>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['approveRadarScoreCalibration'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveRadarScoreCalibration>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  approveRadarScoreCalibration(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveRadarScoreCalibrationMutationResult = NonNullable<Awaited<ReturnType<typeof approveRadarScoreCalibration>>>
+
+    export type ApproveRadarScoreCalibrationMutationError = ErrorType<void>
+
+    /**
+ * @summary Approve a pending score version after operator review
+ */
+export const useApproveRadarScoreCalibration = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveRadarScoreCalibration>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveRadarScoreCalibration>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getApproveRadarScoreCalibrationMutationOptions(options));
+    }
+
 export const getIngestRadarObservationsUrl = () => {
+
+
 
 
   return `/api/v1/ingest`
@@ -672,6 +904,9 @@ export const ingestRadarObservations = async (observationBatchInput: Observation
 );}
 
 
+
+
+
 export const getIngestRadarObservationsMutationOptions = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ingestRadarObservations>>, TError,{data: BodyType<ObservationBatchInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof ingestRadarObservations>>, TError,{data: BodyType<ObservationBatchInput>}, TContext> => {
@@ -684,11 +919,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof ingestRadarObservations>>, {data: BodyType<ObservationBatchInput>}> = (props) => {
           const {data} = props ?? {};
 
           return  ingestRadarObservations(data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -741,6 +982,9 @@ export const listRadarSignals = async (params?: ListRadarSignalsParams, options?
 );}
 
 
+
+
+
 export const getListRadarSignalsQueryKey = (params?: ListRadarSignalsParams,) => {
     return [
     `/api/v1/signals`, ...(params ? [params] : [])
@@ -756,7 +1000,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getListRadarSignalsQueryKey(params);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listRadarSignals>>> = ({ signal }) => listRadarSignals(params, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRadarSignals>>, TError, TData> & { queryKey: QueryKey }
@@ -783,7 +1031,14 @@ export function useListRadarSignals<TData = Awaited<ReturnType<typeof listRadarS
 }
 
 
+
+
+
+
+
 export const getListRadarConnectorsUrl = () => {
+
+
 
 
   return `/api/v1/connectors`
@@ -804,6 +1059,9 @@ export const listRadarConnectors = async ( options?: Parameters<typeof customFet
 );}
 
 
+
+
+
 export const getListRadarConnectorsQueryKey = () => {
     return [
     `/api/v1/connectors`
@@ -819,7 +1077,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getListRadarConnectorsQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listRadarConnectors>>> = ({ signal }) => listRadarConnectors({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRadarConnectors>>, TError, TData> & { queryKey: QueryKey }
@@ -846,7 +1108,14 @@ export function useListRadarConnectors<TData = Awaited<ReturnType<typeof listRad
 }
 
 
+
+
+
+
+
 export const getUpdateRadarConnectorUrl = (key: string,) => {
+
+
 
 
   return `/api/v1/connectors/${key}`
@@ -868,6 +1137,9 @@ export const updateRadarConnector = async (key: string,
 );}
 
 
+
+
+
 export const getUpdateRadarConnectorMutationOptions = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRadarConnector>>, TError,{key: string;data: BodyType<ConnectorUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateRadarConnector>>, TError,{key: string;data: BodyType<ConnectorUpdate>}, TContext> => {
@@ -880,11 +1152,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRadarConnector>>, {key: string;data: BodyType<ConnectorUpdate>}> = (props) => {
           const {key,data} = props ?? {};
 
           return  updateRadarConnector(key,data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -910,6 +1188,8 @@ export const useUpdateRadarConnector = <TError = ErrorType<unknown>,
 export const getRunRadarConnectorUrl = (key: string,) => {
 
 
+
+
   return `/api/v1/connectors/${key}/run`
 }
 
@@ -930,6 +1210,9 @@ export const runRadarConnector = async (key: string,
 );}
 
 
+
+
+
 export const getRunRadarConnectorMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runRadarConnector>>, TError,{key: string;data: BodyType<ConnectorRunInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof runRadarConnector>>, TError,{key: string;data: BodyType<ConnectorRunInput>}, TContext> => {
@@ -942,11 +1225,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       : {mutation: { mutationKey, }, request: undefined};
 
 
+
+
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof runRadarConnector>>, {key: string;data: BodyType<ConnectorRunInput>}> = (props) => {
           const {key,data} = props ?? {};
 
           return  runRadarConnector(key,data,requestOptions)
         }
+
+
+
+
 
 
   return  { mutationFn, ...mutationOptions }}
@@ -972,6 +1261,8 @@ export const useRunRadarConnector = <TError = ErrorType<ErrorResponse>,
 export const getGetRadarDataQualityUrl = () => {
 
 
+
+
   return `/api/v1/data-quality`
 }
 
@@ -990,6 +1281,9 @@ export const getRadarDataQuality = async ( options?: Parameters<typeof customFet
 );}
 
 
+
+
+
 export const getGetRadarDataQualityQueryKey = () => {
     return [
     `/api/v1/data-quality`
@@ -1005,7 +1299,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getGetRadarDataQualityQueryKey();
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof getRadarDataQuality>>> = ({ signal }) => getRadarDataQuality({ signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRadarDataQuality>>, TError, TData> & { queryKey: QueryKey }
@@ -1030,6 +1328,11 @@ export function useGetRadarDataQuality<TData = Awaited<ReturnType<typeof getRada
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
 
 
 export const getListRadarReviewQueueUrl = (params?: ListRadarReviewQueueParams,) => {
@@ -1062,6 +1365,9 @@ export const listRadarReviewQueue = async (params?: ListRadarReviewQueueParams, 
 );}
 
 
+
+
+
 export const getListRadarReviewQueueQueryKey = (params?: ListRadarReviewQueueParams,) => {
     return [
     `/api/v1/review-queue`, ...(params ? [params] : [])
@@ -1077,7 +1383,11 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
   const queryKey =  queryOptions?.queryKey ?? getListRadarReviewQueueQueryKey(params);
 
 
+
     const queryFn: QueryFunction<Awaited<ReturnType<typeof listRadarReviewQueue>>> = ({ signal }) => listRadarReviewQueue(params, { signal, ...requestOptions });
+
+
+
 
 
    return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRadarReviewQueue>>, TError, TData> & { queryKey: QueryKey }
@@ -1104,114 +1414,8 @@ export function useListRadarReviewQueue<TData = Awaited<ReturnType<typeof listRa
 }
 
 
-    export type ApproveRadarScoreCalibrationMutationResult = NonNullable<Awaited<ReturnType<typeof approveRadarScoreCalibration>>>
-
-/**
- * @summary Evaluate a guarded score-weight recommendation on a recent holdout cohort
- */
-export const evaluateRadarScoreCalibration = async ( options?: Parameters<typeof customFetch>[1]): Promise<ScoreCalibrationEvaluationResponse> => {
-
-  return customFetch<ScoreCalibrationEvaluationResponse>(getEvaluateRadarScoreCalibrationUrl(),
-  {
-    ...options,
-    method: 'POST'
 
 
-  }
-);}
-
-/**
- * @summary Approve a pending score version after operator review
- */
-export const approveRadarScoreCalibration = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<ScoreVersionResponse> => {
-
-  return customFetch<ScoreVersionResponse>(getApproveRadarScoreCalibrationUrl(id),
-  {
-    ...options,
-    method: 'POST'
 
 
-  }
-);}
 
-export const getApproveRadarScoreCalibrationMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveRadarScoreCalibration>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof approveRadarScoreCalibration>>, TError,{id: string}, TContext> => {
-
-const mutationKey = ['approveRadarScoreCalibration'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveRadarScoreCalibration>>, {id: string}> = (props) => {
-          const {id} = props ?? {};
-
-          return  approveRadarScoreCalibration(id,requestOptions)
-        }
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type EvaluateRadarScoreCalibrationMutationResult = NonNullable<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>>
-
-    export type ApproveRadarScoreCalibrationMutationError = ErrorType<void>
-
-    /**
- * @summary Approve a pending score version after operator review
- */
-export const useApproveRadarScoreCalibration = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveRadarScoreCalibration>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof approveRadarScoreCalibration>>,
-        TError,
-        {id: string},
-        TContext
-      > => {
-      return useMutation(getApproveRadarScoreCalibrationMutationOptions(options));
-    }
-
-    /**
- * @summary Evaluate a guarded score-weight recommendation on a recent holdout cohort
- */
-export const useEvaluateRadarScoreCalibration = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>,
-        TError,
-        void,
-        TContext
-      > => {
-      return useMutation(getEvaluateRadarScoreCalibrationMutationOptions(options));
-    }
-
-export const getEvaluateRadarScoreCalibrationMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>, TError,void, TContext> => {
-
-const mutationKey = ['evaluateRadarScoreCalibration'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof evaluateRadarScoreCalibration>>, void> = () => {
-
-
-          return  evaluateRadarScoreCalibration(requestOptions)
-        }
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-export const getApproveRadarScoreCalibrationUrl = (id: string,) => {
-
-
-  return `/api/v1/analytics/outcomes/recommendations/${id}/approve`
-}
-
-    export type EvaluateRadarScoreCalibrationMutationError = ErrorType<unknown>

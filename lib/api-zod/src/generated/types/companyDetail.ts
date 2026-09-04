@@ -10,6 +10,7 @@ import type { CompanyDetailEventsItem } from './companyDetailEventsItem';
 import type { CompanyDetailOutcomesItem } from './companyDetailOutcomesItem';
 import type { CompanyDetailScoreHistoryItem } from './companyDetailScoreHistoryItem';
 import type { IdentityReview } from './identityReview';
+import type { MergedRecommendationContext } from './mergedRecommendationContext';
 import type { Observation } from './observation';
 import type { Person } from './person';
 import type { Recommendation } from './recommendation';
@@ -22,6 +23,8 @@ export interface CompanyDetail {
   people: Person[];
   identity_review: IdentityReview;
   recommendation?: Recommendation | null;
+  /** Historical recommendation context retained from accounts merged into this account. These are not active recommendations. */
+  merged_recommendation_contexts: MergedRecommendationContext[];
   events: CompanyDetailEventsItem[];
   outcomes: CompanyDetailOutcomesItem[];
   score_history: CompanyDetailScoreHistoryItem[];

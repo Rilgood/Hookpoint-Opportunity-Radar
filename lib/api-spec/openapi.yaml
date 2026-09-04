@@ -802,6 +802,31 @@ components:
           type: number
         summary:
           type: string
+    MergedRecommendationContext:
+      type: object
+      required: [source_company_id, source_name, merged_at, offer, rationale, outreach_angle, next_action, proof_points]
+      properties:
+        source_company_id:
+          type: string
+        source_name:
+          type: string
+        merged_at:
+          type: string
+          format: date-time
+        offer:
+          type: string
+        headline:
+          type: ["string", "null"]
+        rationale:
+          type: string
+        outreach_angle:
+          type: string
+        next_action:
+          type: string
+        proof_points:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendationProofPoint"
     IdentityReviewAlias:
       type: object
       required: [id, alias_type, alias_value, normalized_value, created_at]
@@ -839,7 +864,7 @@ components:
             additionalProperties: true
     CompanyDetail:
       type: object
-      required: [company, signals, observations, people, events, outcomes, score_history, identity_review]
+      required: [company, signals, observations, people, merged_recommendation_contexts, events, outcomes, score_history, identity_review]
       properties:
         company:
           $ref: "#/components/schemas/Company"
@@ -861,6 +886,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Recommendation"
             - type: "null"
+        merged_recommendation_contexts:
+          type: array
+          description: Historical recommendation context retained from accounts merged into this account. These are not active recommendations.
+          items:
+            $ref: "#/components/schemas/MergedRecommendationContext"
         events:
           type: array
           items:

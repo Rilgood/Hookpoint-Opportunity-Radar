@@ -68,6 +68,7 @@ export * from './listRadarCompaniesParams';
 export * from './listRadarReviewQueueParams';
 export * from './listRadarSignalsParams';
 export * from './listRadarSignalsStatus';
+export * from './mergedRecommendationContext';
 export * from './observation';
 export * from './observationBatchInput';
 export * from './observationCompanyInput';

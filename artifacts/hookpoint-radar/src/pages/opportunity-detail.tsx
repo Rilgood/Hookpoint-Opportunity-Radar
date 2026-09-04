@@ -154,7 +154,15 @@ export default function OpportunityDetail() {
     );
   }
 
-  const { company, signals, observations, recommendation, outcomes, identity_review: identityReview } =
+  const {
+    company,
+    signals,
+    observations,
+    recommendation,
+    merged_recommendation_contexts: mergedRecommendationContexts,
+    outcomes,
+    identity_review: identityReview,
+  } =
     response.data;
 
   const handleOutcomeSubmit = (type: OutcomeInputOutcomeType, note?: string, amount?: number, occurred_at?: string, signal_key?: string) => {
@@ -446,6 +454,77 @@ export default function OpportunityDetail() {
                       </ul>
                     </div>
                   )}
+              </CardContent>
+            </Card>
+          )}
+
+          {mergedRecommendationContexts.length > 0 && (
+            <Card className="border-slate-200 dark:border-slate-800 shadow-sm">
+              <CardHeader className="pb-3 border-b bg-slate-50/70 dark:bg-slate-900/40">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <History className="h-5 w-5 text-slate-500" />
+                  Retained merged-account context
+                </CardTitle>
+                <CardDescription>
+                  Historical research retained for reference. It is not an active recommendation or an outreach instruction.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-4">
+                {mergedRecommendationContexts.map((context, index) => (
+                  <section
+                    key={`${context.source_company_id}-${context.merged_at}-${index}`}
+                    className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/30"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Merged source account
+                        </p>
+                        <p className="mt-1 font-semibold text-foreground">{context.source_name}</p>
+                      </div>
+                      <Badge variant="outline" className="font-normal text-muted-foreground">
+                        Merged {formatDate(context.merged_at)}
+                      </Badge>
+                    </div>
+                    <div className="space-y-4 pt-4 text-sm">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Former offer</p>
+                        <p className="mt-1 font-medium text-foreground">{context.offer}</p>
+                      </div>
+                      {context.headline && (
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Original headline</p>
+                          <p className="mt-1 text-muted-foreground">{context.headline}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Retained rationale</p>
+                        <p className="mt-1 leading-relaxed text-muted-foreground">{context.rationale}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Original outreach angle</p>
+                        <p className="mt-1 leading-relaxed text-muted-foreground">{context.outreach_angle}</p>
+                      </div>
+                      {context.proof_points.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Retained proof points</p>
+                          <ul className="mt-2 space-y-2">
+                            {context.proof_points.map((point, pointIndex) => (
+                              <li key={`${point.label}-${pointIndex}`} className="rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-900">
+                                <p className="font-medium text-foreground">{point.label}</p>
+                                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{point.summary}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <div className="rounded-md border border-dashed border-slate-200 px-3 py-2 dark:border-slate-700">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Former next step · reference only</p>
+                        <p className="mt-1 text-muted-foreground">{context.next_action}</p>
+                      </div>
+                    </div>
+                  </section>
+                ))}
               </CardContent>
             </Card>
           )}
