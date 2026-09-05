@@ -13,6 +13,18 @@ import type { Page } from "@playwright/test";
 
 const CLERK_API = "https://api.clerk.com/v1";
 
+/**
+ * The dedicated operator account every browser spec signs in as. Its private
+ * workspace is keyed by the Clerk user id, so specs reset that tenant rather
+ * than creating more accounts. Override with E2E_CLERK_EMAIL (must not be a
+ * `.test` address: Clerk rejects those).
+ */
+export const E2E_USER = {
+  email: process.env.E2E_CLERK_EMAIL ?? "e2e-decision-smoke@example.com",
+  firstName: "E2E",
+  lastName: "Operator",
+};
+
 export interface ClerkTestUser {
   id: string;
   email: string;
@@ -88,6 +100,18 @@ export async function createSignInToken(userId: string, expiresInSeconds = 300):
   return token.token;
 }
 
+/**
+ * Ends a session server-side, exactly like an administrator revoking it from
+ * the Clerk dashboard or a security policy expiring it. The browser is not
+ * told: it finds out the next time it asks Clerk for a session token.
+ */
+export async function revokeClerkSession(sessionId: string): Promise<void> {
+  const session = await clerkApi<{ status: string }>(`/sessions/${sessionId}/revoke`, { method: "POST" });
+  if (session.status !== "revoked") {
+    throw new Error(`Clerk session ${sessionId} was not revoked (status: ${session.status}).`);
+  }
+}
+
 declare global {
   interface Window {
     Clerk?: {
@@ -100,9 +124,38 @@ declare global {
           }>;
         };
       };
+      session?: { id: string; getToken(options?: { skipCache?: boolean }): Promise<string | null> } | null;
       setActive(params: { session: string }): Promise<void>;
     };
   }
+}
+
+/** The id of the session the page is currently signed in with. */
+export async function activeClerkSessionId(page: Page): Promise<string> {
+  await page.waitForFunction(() => window.Clerk?.loaded === true, null, { timeout: 30_000 });
+  const sessionId = await page.evaluate(() => window.Clerk?.session?.id ?? null);
+  if (!sessionId) {
+    throw new Error("The page has no active Clerk session.");
+  }
+  return sessionId;
+}
+
+/**
+ * Makes the page ask Clerk for a fresh session token right now. Clerk.js does
+ * this on its own roughly once a minute (session tokens are short-lived), and
+ * it is the moment a server-side revocation becomes visible to the browser:
+ * the token request fails and Clerk drops the session. Forcing it keeps the
+ * gate fast without changing what the app observes. The request is expected
+ * to fail once the session is gone, so its result is deliberately ignored.
+ */
+export async function refreshClerkSessionToken(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    try {
+      await window.Clerk?.session?.getToken({ skipCache: true });
+    } catch {
+      // A revoked session rejects here; the app-level reaction is what the spec asserts.
+    }
+  });
 }
 
 /**

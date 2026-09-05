@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { ensureClerkTestUser, signInWithClerk, type ClerkTestUser } from "./clerk-session";
+import { E2E_USER, ensureClerkTestUser, signInWithClerk, type ClerkTestUser } from "./clerk-session";
 import {
   activateIndependentScoringVersion,
   getApprovedScoringVersion,
@@ -28,13 +28,9 @@ import {
  *
  * The private-workspace model grants the workspace owner both operator (write)
  * and administrator scopes, so a single dedicated account plays both roles.
+ * The other half of the session lifecycle (sign-out, revocation) lives in
+ * session-lifecycle.spec.ts.
  */
-
-const E2E_USER = {
-  email: process.env.E2E_CLERK_EMAIL ?? "e2e-decision-smoke@example.com",
-  firstName: "E2E",
-  lastName: "Operator",
-};
 
 const runId = `e2e${Date.now().toString(36)}`;
 
