@@ -10,10 +10,15 @@ export class ApifyConnector extends BaseConnector {
     return true;
   }
 
-  async collect(input = {}) {
+  validateInput(input = {}) {
     if (this.manifest.key === 'apify_google_search' && !input.company?.name && !input.company?.domain) {
       throw new AppError(400, 'company_required', 'Google Search collection requires a target company identity to prevent result misattribution.');
     }
+    return true;
+  }
+
+  async collect(input = {}) {
+    this.validateInput(input);
     const actor = encodeURIComponent(this.actor.replaceAll('/', '~'));
     const url = `https://api.apify.com/v2/actors/${actor}/run-sync-get-dataset-items?clean=true&format=json`;
     try {

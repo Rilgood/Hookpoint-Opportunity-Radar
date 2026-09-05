@@ -7,6 +7,6 @@
  */
 
 /**
- * Non-secret connector input saved for recurring runs. Credentials, API keys, access tokens, passwords, and other secrets are forbidden. reset_cursor is reserved for one-time runs and must not appear in schedule_input.
+ * Non-secret connector input saved for recurring runs. Credentials, API keys, access tokens, passwords, and other secrets are forbidden. reset_cursor is reserved for one-time runs and must not appear in schedule_input. When enabling a recurring connector, the adapter validates this input at save time and the request fails with 400 (code and message from the adapter, e.g. company_required for GDELT) instead of the schedule failing at its next cadence slot.
  */
 export type ConnectorUpdateScheduleInput = { [key: string]: unknown };

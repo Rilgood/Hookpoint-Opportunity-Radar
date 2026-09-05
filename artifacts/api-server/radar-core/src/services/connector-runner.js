@@ -181,6 +181,9 @@ export function setConnectorEnabled(db, tenantId, key, enabled, settings = {}) {
     && (!isPlainObject(nextConfig.scheduleInput) || Object.keys(nextConfig.scheduleInput).length === 0)) {
     throw new AppError(400, 'schedule_input_required', 'Configure non-secret schedule_input before enabling this recurring connector.');
   }
+  if (enabled && connector.mode !== 'push' && connector.cadence !== 'manual') {
+    assertScheduleInputAccepted(tenantId, key, nextConfig.scheduleInput);
+  }
   db.run(`UPDATE connectors SET enabled=?, status=?, next_run_at=?, config_json=?, backoff_until=NULL, updated_at=?
     WHERE tenant_id=? AND connector_key=?`, [enabled ? 1 : 0, enabled ? 'ready' : (connector.configured ? 'disabled' : 'needs_configuration'), enabled ? now : null, stableJson(nextConfig), now, tenantId, key]);
   const stored = db.get('SELECT * FROM connectors WHERE tenant_id=? AND connector_key=?', [tenantId, key]);
@@ -256,6 +259,9 @@ export function startScheduler(db, intervalMs = 60_000, { onEvent, leaseMs = con
         // backoff inside runConnector. A validation-style rejection (4xx)
         // means the stored schedule input is wrong; it will not fix itself, so
         // defer to the next cadence slot instead of retrying every tick.
+        // setConnectorEnabled runs the adapter's validateInput at save time,
+        // so this branch is the safety net for rows saved before an adapter
+        // tightened its rules or for environment drift (revoked bindings).
         const rejected = Boolean(error.status) && error.status < 500 && error.status !== 429;
         if (rejected) {
           db.run('UPDATE connectors SET next_run_at=? WHERE tenant_id=? AND connector_key=?', [nextRun(nowIso(), row.cadence), row.tenant_id, row.connector_key]);
@@ -291,6 +297,29 @@ export function startScheduler(db, intervalMs = 60_000, { onEvent, leaseMs = con
     clearInterval(timer);
     if (inFlight) await inFlight.catch(() => {});
   };
+}
+
+/**
+ * Runs the adapter's own input validation against a schedule_input at save
+ * time, with the same shape the scheduler will hand to runConnector, so an
+ * operator learns about a missing target company (or an out-of-range limit,
+ * an invalid date, an unauthorized sheet) when they enable the cadence
+ * rather than when the first scheduled run fails an hour later.
+ */
+function assertScheduleInputAccepted(tenantId, key, scheduleInput) {
+  const candidate = withoutInternalFields(scheduleInput, { includeCursor: true });
+  Object.defineProperties(candidate, {
+    trustedTenantId: { value: tenantId },
+    trusted_tenant_id: { value: tenantId },
+  });
+  try {
+    connectorFor(key).validateInput(candidate);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw new AppError(error.status >= 400 && error.status < 500 ? error.status : 400, error.code, `schedule_input rejected: ${error.message}`, error.details);
+    }
+    throw new AppError(400, 'invalid_schedule_input', `schedule_input rejected: ${redactText(error?.message || String(error), 500)}`);
+  }
 }
 
 function markRunAbandoned(db, runId, finished, message, durationMs) {

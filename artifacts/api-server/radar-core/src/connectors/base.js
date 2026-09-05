@@ -4,6 +4,17 @@ import { config } from '../config.js';
 export class BaseConnector {
   constructor(manifest) { this.manifest = manifest; }
   validateConfiguration() { return true; }
+  /**
+   * Synchronously checks the caller-supplied input the adapter needs before
+   * it can collect anything (target company, identifiers, bounded limits and
+   * date ranges). Adapters override this and throw a 4xx AppError with a
+   * user-facing reason. The same check runs at two moments: at the start of
+   * `collect()` so a manual run fails fast, and when an operator saves a
+   * recurring schedule so a bad schedule_input is rejected on save instead of
+   * at the next cadence slot. It must not touch the network or rely on
+   * run-time state such as cursors.
+   */
+  validateInput() { return true; }
   async collect() { throw new AppError(501, 'connector_not_implemented', `${this.manifest.label} requires a source-specific collection adapter.`); }
   normalize() { throw new AppError(501, 'normalizer_not_implemented', `${this.manifest.label} requires a record normalizer.`); }
   normalizeCollection() { return null; }

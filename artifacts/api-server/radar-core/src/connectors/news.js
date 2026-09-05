@@ -4,13 +4,17 @@ import { requestJson } from './http-client.js';
 
 export class NewsApiConnector extends BaseConnector {
   validateConfiguration() { this.key = this.requireEnv('NEWS_API_KEY'); }
-  async collect(input = {}) {
+  validateInput(input = {}) {
     if (!input.company?.name && !input.company?.domain) throw new AppError(400, 'company_required', 'NewsAPI requires a target company identity to prevent news misattribution.');
+    return { limit: boundedLimit(input.limit, 50, 100), from: cursorStart(input.from) };
+  }
+  async collect(input = {}) {
+    const { limit } = this.validateInput(input);
     const query = input.query || quotedTarget(input.company.name || input.company.domain);
     const url = new URL('https://newsapi.org/v2/everything');
     url.searchParams.set('q', query);
     url.searchParams.set('sortBy', 'publishedAt');
-    url.searchParams.set('pageSize', String(boundedLimit(input.limit, 50, 100)));
+    url.searchParams.set('pageSize', String(limit));
     const from = cursorStart(input.cursor?.published_at || input.from);
     if (from) url.searchParams.set('from', from.toISOString());
     const result = await requestJson(url, { headers: { 'X-Api-Key': this.key }, retries: 2 });
@@ -30,13 +34,17 @@ export class NewsApiConnector extends BaseConnector {
 }
 
 export class GdeltConnector extends BaseConnector {
-  async collect(input = {}) {
+  validateInput(input = {}) {
     if (!input.company?.name && !input.company?.domain) throw new AppError(400, 'company_required', 'GDELT requires a target company identity to prevent news misattribution.');
+    return { limit: boundedLimit(input.limit, 50, 250), start: cursorStart(input.start_datetime) };
+  }
+  async collect(input = {}) {
+    const { limit } = this.validateInput(input);
     const url = new URL('https://api.gdeltproject.org/api/v2/doc/doc');
     url.searchParams.set('query', input.query || quotedTarget(input.company.name || input.company.domain));
     url.searchParams.set('mode', 'artlist');
     url.searchParams.set('format', 'json');
-    url.searchParams.set('maxrecords', String(boundedLimit(input.limit, 50, 250)));
+    url.searchParams.set('maxrecords', String(limit));
     url.searchParams.set('sort', 'DateDesc');
     const start = cursorStart(input.cursor?.seen_at || input.start_datetime);
     if (start) url.searchParams.set('startdatetime', gdeltTimestamp(start));

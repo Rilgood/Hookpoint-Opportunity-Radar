@@ -21,11 +21,16 @@ const AWARD_LABEL_TYPES = new Map([
 ]);
 
 export class SecEdgarConnector extends BaseConnector {
+  validateInput(input = {}) {
+    return {
+      cik: normalizeCik(input.cik ?? input.company?.cik),
+      limit: boundedInteger(input.limit, 50, 1, 100, 'limit'),
+      forms: normalizeForms(input.forms),
+      dates: boundedDateRange(input.from ?? input.start_date, input.to ?? input.end_date, 3 * 366, 366)
+    };
+  }
   async collect(input = {}) {
-    const cik = normalizeCik(input.cik ?? input.company?.cik);
-    const limit = boundedInteger(input.limit, 50, 1, 100, 'limit');
-    const forms = normalizeForms(input.forms);
-    const dates = boundedDateRange(input.from ?? input.start_date, input.to ?? input.end_date, 3 * 366, 366);
+    const { cik, limit, forms, dates } = this.validateInput(input);
     const cursor = normalizeSecCursor(input.cursor);
     const url = new URL(`CIK${cik}.json`, SEC_SUBMISSIONS_ENDPOINT);
     const payload = await requestJson(url, { headers: { 'User-Agent': SEC_USER_AGENT, Accept: 'application/json' }, retries: 2 });
@@ -83,16 +88,23 @@ export class SecEdgarConnector extends BaseConnector {
 }
 
 export class NppesConnector extends BaseConnector {
-  async collect(input = {}) {
+  validateInput(input = {}) {
     const organizationName = String(input.organization_name ?? input.company?.name ?? '').trim();
     const npi = input.npi == null || input.npi === '' ? null : normalizeNpi(input.npi);
     if (!organizationName && !npi) throw new AppError(400, 'company_required', 'NPPES requires an organization name or NPI.');
     if (organizationName.length > 200) throw new AppError(400, 'invalid_organization_name', 'organization_name may not exceed 200 characters.');
-    const limit = boundedInteger(input.limit, 50, 1, 200, 'limit');
+    return {
+      organizationName, npi,
+      limit: boundedInteger(input.limit, 50, 1, 200, 'limit'),
+      skip: boundedInteger(input.skip, 0, 0, 1_000, 'skip'),
+      state: normalizeState(input.state)
+    };
+  }
+  async collect(input = {}) {
+    const { organizationName, npi, limit, state } = this.validateInput(input);
     requirePageCursor(input.cursor, 'skip');
     const cursorSkip = input.cursor == null ? undefined : input.cursor.skip;
     const skip = boundedInteger(cursorSkip ?? input.skip, 0, 0, 1_000, 'skip');
-    const state = normalizeState(input.state);
     const url = new URL(NPPES_ENDPOINT);
     url.searchParams.set('version', '2.1');
     url.searchParams.set('enumeration_type', 'NPI-2');
@@ -153,15 +165,21 @@ export class NppesConnector extends BaseConnector {
 }
 
 export class UsaSpendingConnector extends BaseConnector {
-  async collect(input = {}) {
+  validateInput(input = {}) {
     const companyName = String(input.company?.name || '').trim();
     if (!companyName) throw new AppError(400, 'company_required', 'USAspending requires a target company name.');
     if (companyName.length > 200) throw new AppError(400, 'invalid_company_name', 'Target company name may not exceed 200 characters.');
-    const limit = boundedInteger(input.limit, 50, 1, 100, 'limit');
-    const initialPage = boundedInteger(input.page, 1, 1, 1_000, 'page');
+    return {
+      companyName,
+      limit: boundedInteger(input.limit, 50, 1, 100, 'limit'),
+      initialPage: boundedInteger(input.page, 1, 1, 1_000, 'page'),
+      dates: boundedDateRange(input.start_date ?? input.from, input.end_date ?? input.to, 3 * 366, 366),
+      awardCodes: normalizeAwardCodes(input.award_type_codes)
+    };
+  }
+  async collect(input = {}) {
+    const { companyName, limit, initialPage, dates, awardCodes } = this.validateInput(input);
     const cursor = normalizeUsaSpendingCursor(input.cursor);
-    const dates = boundedDateRange(input.start_date ?? input.from, input.end_date ?? input.to, 3 * 366, 366);
-    const awardCodes = normalizeAwardCodes(input.award_type_codes);
     const groups = [
       { key: 'contract', cursorKey: 'contract_page', codes: awardCodes.filter((code) => CONTRACT_CODES.has(code)) },
       { key: 'grant', cursorKey: 'grant_page', codes: awardCodes.filter((code) => GRANT_CODES.has(code)) }

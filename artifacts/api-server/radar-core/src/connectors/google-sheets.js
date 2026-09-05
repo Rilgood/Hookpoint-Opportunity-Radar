@@ -41,10 +41,14 @@ export class GoogleSheetsConnector extends BaseConnector {
     this.transport = transport;
   }
 
-  async collect(input = {}) {
+  validateInput(input = {}) {
     const spreadsheetId = resolveSpreadsheetId(input);
     assertTenantSheetBinding(input.trustedTenantId, spreadsheetId);
-    const range = parseRange(input.range);
+    return { spreadsheetId, range: parseRange(input.range) };
+  }
+
+  async collect(input = {}) {
+    const { spreadsheetId, range } = this.validateInput(input);
     const canonicalUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
     const path = `/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range.a1)}?majorDimension=ROWS&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING`;
     let response;

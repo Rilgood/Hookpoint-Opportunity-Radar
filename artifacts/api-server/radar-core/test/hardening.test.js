@@ -598,6 +598,46 @@ test('requires schedule input before enabling a recurring pull connector', () =>
   db.close();
 });
 
+test('rejects schedule input the adapter would refuse when the cadence is saved, not when it first runs', () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const gdeltRow = () => db.get("SELECT enabled, status, next_run_at, config_json FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+
+  // GDELT refuses to run without a target company; the same adapter check now fails the PATCH.
+  assert.throws(() => setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { query: 'no company here' } }),
+    (error) => error.status === 400 && error.code === 'company_required' && /GDELT requires a target company/.test(error.message));
+  // Other adapter input rules apply too (bounded limit, parseable start time).
+  assert.throws(() => setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Target' }, limit: 9999 } }),
+    (error) => error.status === 400 && error.code === 'invalid_connector_limit');
+  assert.throws(() => setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Target' }, start_datetime: 'not-a-date' } }),
+    (error) => error.status === 400 && error.code === 'invalid_connector_cursor');
+  const untouched = gdeltRow();
+  assert.equal(untouched.enabled, 0, 'a rejected save leaves the connector disabled');
+  assert.equal(untouched.next_run_at, null, 'a rejected save schedules nothing');
+  assert.equal(JSON.parse(untouched.config_json).scheduleInput, undefined, 'a rejected schedule_input is not persisted');
+  assert.equal(db.get("SELECT COUNT(*) count FROM connector_runs WHERE connector_key='gdelt'").count, 0, 'validation never starts a run');
+
+  // Valid schedule input still saves and arms the cadence.
+  const saved = setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Target' }, limit: 5 } });
+  assert.equal(saved.enabled, true);
+  assert.deepEqual(saved.config.scheduleInput, { company: { name: 'Target' }, limit: 5 });
+  assert.ok(gdeltRow().next_run_at, 'a valid save arms the schedule');
+
+  // Disabling never re-validates: an operator can always switch a cadence off.
+  const disabled = setConnectorEnabled(db, config.defaultTenantId, 'gdelt', false);
+  assert.equal(disabled.enabled, false);
+  db.close();
+});
+
+test('save-time validation leaves manual one-time runs to the adapter at run time', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  // A manual run with bad input still fails through runConnector (the adapter rejects it) and records the run.
+  await assert.rejects(() => runConnector(db, config.defaultTenantId, 'gdelt', { query: 'no company here' }), { code: 'company_required', status: 400 });
+  assert.equal(db.get("SELECT COUNT(*) count FROM connector_runs WHERE connector_key='gdelt' AND status='failed'").count, 1);
+  db.close();
+});
+
 test('scheduler runs an enabled cadence and refreshes due scores without a manual trigger', async () => {
   const db = setup();
   db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
@@ -687,7 +727,11 @@ test('scheduler defers a cadence whose schedule input is rejected instead of ret
   let stop;
   try {
     // GDELT rejects schedule input without a target company (a 400-class AppError from the adapter).
-    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { query: 'no company here' } });
+    // setConnectorEnabled now refuses such input on save, so write the row directly to model a
+    // cadence persisted before the adapter tightened its rules.
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Target' } } });
+    db.run("UPDATE connectors SET config_json=? WHERE tenant_id=? AND connector_key='gdelt'",
+      [JSON.stringify({ ...JSON.parse(db.get("SELECT config_json FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]).config_json), scheduleInput: { query: 'no company here' } }), config.defaultTenantId]);
     const before = db.get("SELECT next_run_at FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]).next_run_at;
     stop = startScheduler(db, 60_000, { onEvent: (event) => events.push(event) });
     await waitFor(() => events.some((event) => event.event === 'scheduler_tick'));
