@@ -266,6 +266,43 @@ const migrations = [
       addColumn(db, 'connectors', 'lease_token', 'TEXT');
       addColumn(db, 'connectors', 'lease_expires_at', 'TEXT');
     }
+  },
+  {
+    version: 11,
+    run(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS work_items (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          note TEXT,
+          owner_name TEXT,
+          due_at TEXT,
+          status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'done', 'dismissed')),
+          snoozed_until TEXT,
+          resolution_note TEXT,
+          completed_at TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          updated_by TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_work_items_queue ON work_items(tenant_id, status, due_at);
+        CREATE INDEX IF NOT EXISTS idx_work_items_company ON work_items(tenant_id, company_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS evidence_reviews (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+          observation_id TEXT NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
+          status TEXT NOT NULL CHECK(status IN ('verified', 'rejected', 'needs_review')),
+          note TEXT,
+          reviewed_by TEXT NOT NULL,
+          reviewed_at TEXT NOT NULL,
+          UNIQUE(tenant_id, observation_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_evidence_reviews_status ON evidence_reviews(tenant_id, status, observation_id);
+      `);
+    }
   }
 ];
 

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isEphemeralSqlitePath } from './storage-path.js';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -20,7 +21,10 @@ function loadDotEnv(file = path.join(rootDir, '.env')) {
   }
 }
 
-loadDotEnv();
+// The isolated demo runner supplies a clean environment. Never load deployment
+// databases or provider credentials into that explicitly local development run.
+const localDemo = process.env.HOOKPOINT_LOCAL_DEMO === 'true' && process.env.NODE_ENV === 'development';
+if (!localDemo) loadDotEnv();
 
 const boolean = (value, fallback = false) => {
   if (value == null || value === '') return fallback;
@@ -55,7 +59,7 @@ const databasePath = databaseSetting === ':memory:' ? ':memory:' : path.resolve(
 // precedence over the embedded SQLite file: it is the only store that survives
 // restarts and scale-out of the published API.
 const databaseUrl = /^postgres(ql)?:\/\//i.test(String(process.env.DATABASE_URL || '')) ? String(process.env.DATABASE_URL).trim() : '';
-const isEphemeralDatabase = !databaseUrl && (databasePath === ':memory:' || databasePath === '/tmp' || databasePath.startsWith('/tmp/'));
+const isEphemeralDatabase = !databaseUrl && isEphemeralSqlitePath(databasePath);
 const storageMode = databaseUrl ? 'postgres' : (isEphemeralDatabase ? 'ephemeral_sqlite' : 'persistent_sqlite');
 
 export const config = Object.freeze({

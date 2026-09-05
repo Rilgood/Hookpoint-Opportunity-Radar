@@ -4,7 +4,7 @@ import { json } from '../lib.js';
 import { observationTypeSet } from '../observation-contract.js';
 
 const read = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
-const operators = new Set(['eq','gte','lte','gt','lt','truthy','in','contains_any']);
+const operators = new Set(['eq','gte','lte','gt','lt','truthy','in','contains_any','contains_any_unnegated']);
 const cadences = new Set(['realtime','hourly','daily','weekly','monthly','quarterly','manual']);
 
 function validateSignals(items) {
@@ -21,7 +21,7 @@ function validateSignals(items) {
     if (!conditions.length) throw new Error(`Signal ${item.key} must declare at least one match condition.`);
     for (const condition of conditions) {
       if (!condition || typeof condition.path !== 'string' || !operators.has(condition.op)) throw new Error(`Signal ${item.key} contains an invalid condition.`);
-      if (['in','contains_any'].includes(condition.op) && (!Array.isArray(condition.value) || !condition.value.length)) throw new Error(`Signal ${item.key} requires an array value for ${condition.op}.`);
+      if (['in','contains_any','contains_any_unnegated'].includes(condition.op) && (!Array.isArray(condition.value) || !condition.value.length)) throw new Error(`Signal ${item.key} requires an array value for ${condition.op}.`);
       if (['gte','lte','gt','lt'].includes(condition.op) && !Number.isFinite(Number(condition.value))) throw new Error(`Signal ${item.key} requires a numeric comparison value.`);
     }
     keys.add(item.key);

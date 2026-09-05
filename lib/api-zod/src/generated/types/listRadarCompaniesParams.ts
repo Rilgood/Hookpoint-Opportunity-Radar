@@ -5,6 +5,7 @@
  * Typed application contract for the Hook Point Opportunity Radar.
  * OpenAPI spec version: 1.1.0
  */
+import type { CompanyStatus } from './companyStatus';
 import type { IdentityReviewStatus } from './identityReviewStatus';
 import type { OpportunityTier } from './opportunityTier';
 
@@ -12,6 +13,7 @@ export type ListRadarCompaniesParams = {
 tier?: OpportunityTier;
 q?: string;
 identity_review_status?: IdentityReviewStatus;
+status?: CompanyStatus;
 /**
  * @minimum 0
  * @maximum 100

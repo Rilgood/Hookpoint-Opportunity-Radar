@@ -32,12 +32,12 @@
   {
     "key":"marketing_hiring_surge","label":"Marketing hiring surge","category":"hiring","dimension":"intent","weight":20,"halfLifeDays":45,"polarity":1,
     "description":"Multiple marketing hires indicate active investment and an execution gap.","offer":"Fractional Creative Intelligence","play":"Help the growing team establish hooks and test infrastructure while it staffs up.",
-    "match":{"types":["job_posting","hiring_metric"],"any":[{"path":"attributes.marketing_openings_30d","op":"gte","value":3},{"path":"attributes.role","op":"contains_any","value":["performance marketing","creative strategist","growth marketing","content strategist","paid social"]}]}
+    "match":{"types":["job_posting","hiring_metric"],"all":[{"path":"attributes.marketing_openings_30d","op":"gte","value":3}]}
   },
   {
     "key":"agency_search","label":"Agency or partner search","category":"intent","dimension":"intent","weight":32,"halfLifeDays":21,"polarity":1,
     "description":"The company is explicitly evaluating an agency, consultant or creative partner.","offer":"Hook Point Working Session","play":"Respond directly to the stated brief with an evidence-backed opportunity map.",
-    "match":{"types":["job_posting","rfp","social_post","news"],"any":[{"path":"body","op":"contains_any","value":["seeking an agency","agency partner","request for proposal","creative partner","marketing consultant","looking for an agency"]},{"path":"attributes.explicit_agency_search","op":"eq","value":true}]}
+    "match":{"types":["job_posting","rfp","social_post","news"],"any":[{"path":"body","op":"contains_any_unnegated","value":["seeking an agency","looking for an agency","seeking a marketing agency","looking for a marketing agency","seeking a creative agency","looking for a creative agency","seeking a creative partner","looking for a creative partner","seeking a marketing consultant","looking for a marketing consultant","marketing request for proposal","creative request for proposal","request for proposals for marketing","request for proposal for marketing"]},{"path":"attributes.explicit_agency_search","op":"eq","value":true}]}
   },
   {
     "key":"ad_activity_started","label":"Advertising started","category":"advertising","dimension":"intent","weight":16,"halfLifeDays":21,"polarity":1,
@@ -50,8 +50,8 @@
     "match":{"types":["ad_snapshot"],"any":[{"path":"attributes.active_ads_delta_pct","op":"gte","value":50},{"path":"attributes.new_ads_7d","op":"gte","value":10}]}
   },
   {
-    "key":"creative_fatigue","label":"Creative fatigue","category":"creative_need","dimension":"need","weight":28,"halfLifeDays":21,"polarity":1,
-    "description":"The company is repeating or overextending paid creative.","offer":"Creative Refresh Sprint","play":"Show the repeated concepts and propose distinct hooks built around audience tensions.",
+    "key":"creative_fatigue","label":"Creative refresh hypothesis","category":"creative_need","dimension":"need","weight":28,"halfLifeDays":21,"polarity":1,
+    "description":"Creative age, repetition or exposure warrants review; these proxies do not establish fatigue or poor performance.","offer":"Creative Refresh Sprint","play":"Review the observed creative patterns alongside performance data before proposing a refresh; successful long-running ads may still be effective.",
     "match":{"types":["ad_snapshot","creative_metric"],"any":[{"path":"attributes.median_creative_age_days","op":"gte","value":21},{"path":"attributes.duplicate_creative_ratio","op":"gte","value":0.55},{"path":"attributes.frequency","op":"gte","value":4}]}
   },
   {

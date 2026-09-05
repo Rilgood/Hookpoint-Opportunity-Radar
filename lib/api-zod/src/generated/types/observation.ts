@@ -5,8 +5,16 @@
  * Typed application contract for the Hook Point Opportunity Radar.
  * OpenAPI spec version: 1.1.0
  */
+import type { ObservationReviewStatus } from './observationReviewStatus';
 
 export interface Observation {
+  review_status?: ObservationReviewStatus;
+  /** @nullable */
+  review_note?: string | null;
+  /** @nullable */
+  reviewed_by?: string | null;
+  /** @nullable */
+  reviewed_at?: string | null;
   id: string;
   source: string;
   type: string;

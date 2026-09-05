@@ -19,6 +19,8 @@ import { observationTypes } from './observation-contract.js';
 import { approveScoreCalibration, evaluateScoreCalibration, outcomeAnalytics, recordOutcome } from './services/outcomes.js';
 import { analyticsInsights, companyInsights } from './services/insights.js';
 import { currentVersion } from './db/migrations.js';
+import { workspaceReadiness } from './services/workspace-readiness.js';
+import { registerWorkflowRoutes } from './services/workflow-routes.js';
 
 export function schemaReady(db) {
   return !db.schemaStatus || db.schemaStatus.ok;
@@ -49,12 +51,17 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
     observation_types: observationTypes, implemented_connectors: [...implementedConnectorKeys]
   }));
   router.get('/api/v1/dashboard', async ({ auth }) => dashboardSummary(db, auth.tenantId));
+  router.get('/api/v1/workspace-readiness', async ({ auth }) => workspaceReadiness(db, auth.tenantId));
+  registerWorkflowRoutes(router, db);
   router.get('/api/v1/companies', async ({ auth, query }) => listCompanies(db, auth.tenantId, query));
   router.get('/api/v1/companies/:id', async ({ auth, params }) => companyDetail(db, auth.tenantId, params.id));
   router.get('/api/v1/companies/:id/insights', async ({ auth, params }) => companyInsights(db, auth.tenantId, params.id));
   router.post('/api/v1/companies/:id/identity/confirm', async ({ auth, params, body, requestId }) => {
     requireScope(auth, 'write');
-    const company = db.transaction(() => confirmIdentity(db, auth.tenantId, params.id, body, auth.actor));
+    const company = db.transaction(() => {
+      confirmIdentity(db, auth.tenantId, params.id, body, auth.actor);
+      return rescoreCompany(db, auth.tenantId, params.id);
+    });
     recordAudit(db, auth.tenantId, { action: 'identity.confirmed', actor: auth.actor, resourceType: 'company', resourceId: params.id, requestId, details: { identity_type: body?.identity_type } });
     return company;
   });

@@ -76,11 +76,17 @@ Do not automatically retry paid/non-idempotent POST collection calls. Apify acto
 
 ## Implemented paths
 
+The registry contains 16 implemented paths and 17 planned integrations. For the current operator activation checklist and exact environment names, see [CONNECTOR_ACTIVATION.md](../../../../CONNECTOR_ACTIVATION.md). Implemented means the adapter exists; a live provider run still needs verification.
+
 | Source | Mode | Observation focus | Required environment |
 |---|---|---|---|
 | Generic signed webhook | Push | Any canonical type | Admin/scoped API key + webhook secret |
 | GDELT | Pull | Target-company news | None; target company required in run input |
 | NewsAPI | Pull | Target-company news | `NEWS_API_KEY`; target company required |
+| SEC EDGAR | Pull | Dated registrant filings | None; CIK required; confirm the contact-bearing User-Agent before activation |
+| NPPES | Pull | Organization identity | None; organization name or NPI required |
+| USAspending | Pull | Federal award events | None; target company name required |
+| Google Sheets | Pull | Canonical research rows | Replit-managed `google-sheet` connection + `GOOGLE_SHEETS_TENANT_BINDINGS` for this tenant and spreadsheet |
 | Apify Google Maps | Pull | Reviews/local profile | Token + actor ID |
 | Apify websites | Pull | Website changes | Token + actor ID |
 | Apify Google Search | Pull | Targeted search evidence | Token + actor ID + target company input |
@@ -93,7 +99,7 @@ Apify actor references may be entered as `owner/actor` or `owner~actor`; the ada
 
 The Facebook Ads adapter aggregates each returned account collection into one daily account snapshot, deduplicates ad IDs, and derives active-ad count, seven-day creative starts, median creative age and exact-creative duplication. Ingestion compares the snapshot with the prior account snapshot to derive ad-volume change. Google Maps metrics use daily snapshot IDs; website snapshots version by checksum (or day when no checksum exists); LinkedIn company metrics version from material profile values. This prevents mutable provider entities from being mistaken for permanent duplicates.
 
-The remaining registry entries are contracts awaiting vendor-specific collectors: SEC EDGAR, OpenCorporates, Crunchbase, Apollo, People Data Labs, BuiltWith, Semrush, Similarweb, Google Trends, YouTube, HubSpot, Salesforce, first-party ad platforms, Ticketmaster, NPPES, SAM.gov and USAspending.
+The 17 remaining registry entries await vendor-specific collectors: OpenCorporates, Crunchbase, Apollo, People Data Labs, BuiltWith, Semrush, Similarweb, Google Trends, YouTube, HubSpot, Salesforce, Meta Ads, Google Ads, TikTok Ads, LinkedIn Ads, Ticketmaster and SAM.gov. Supplying their catalogued environment values does not make these collectors executable.
 
 ## Run input and scheduling
 
@@ -140,4 +146,4 @@ NewsAPI advances `cursor.published_at`; GDELT advances `cursor.seen_at`. Both re
 - Save provider cursors and deltas so unchanged history is not repurchased.
 - Measure provider cost per accepted opportunity, not just cost per record.
 
-Recommended implementation order: CRM, Apollo/contact enrichment, Crunchbase/SEC, technology/traffic, first-party ads, then industry-specific public feeds.
+Implementing a planned collector is a separate development task. Existing SEC, NPPES and USAspending adapters can be configured and verified through the current pull-run path.

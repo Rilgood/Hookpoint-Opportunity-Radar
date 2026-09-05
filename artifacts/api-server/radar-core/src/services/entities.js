@@ -42,10 +42,11 @@ export function resolveCompany(db, tenantId, input = {}, source = 'manual') {
       FROM companies c LEFT JOIN company_aliases a ON a.company_id=c.id AND a.tenant_id=c.tenant_id
       WHERE c.tenant_id=? AND (c.normalized_name=? OR (a.alias_type='name' AND a.normalized_value=?))`,
       [normalizedName, source, tenantId, normalizedName, normalizedName]);
-    const located = candidates.filter((candidate) => locationAgreement(candidate, identity));
+    const compatible = candidates.filter((candidate) => !nameMatchConflicts(candidate, identity));
+    const located = compatible.filter((candidate) => locationAgreement(candidate, identity));
     if (located.length === 1) { existing = located[0]; method = 'name_location'; confidence = 0.88; }
     else {
-      const sourceMatches = candidates.filter((candidate) => candidate.source_name_match);
+      const sourceMatches = compatible.filter((candidate) => candidate.source_name_match);
       if (sourceMatches.length === 1) { existing = sourceMatches[0]; method = 'source_name_exact'; confidence = 0.76; }
     }
   }
@@ -129,7 +130,7 @@ export function mergeCompanies(db, tenantId, sourceCompanyId, input = {}, actor 
   moveRows(db, 'people', tenantId, sourceCompanyId, targetCompanyId, ['source', 'external_id']);
   moveRows(db, 'observations', tenantId, sourceCompanyId, targetCompanyId, ['source', 'content_hash']);
   db.run('UPDATE signals SET company_id=? WHERE tenant_id=? AND company_id=?', [targetCompanyId, tenantId, sourceCompanyId]);
-  for (const table of ['lead_events', 'outcomes', 'score_snapshots']) db.run(`UPDATE ${table} SET company_id=? WHERE tenant_id=? AND company_id=?`, [targetCompanyId, tenantId, sourceCompanyId]);
+  for (const table of ['lead_events', 'outcomes', 'score_snapshots', 'work_items']) db.run(`UPDATE ${table} SET company_id=? WHERE tenant_id=? AND company_id=?`, [targetCompanyId, tenantId, sourceCompanyId]);
   const targetRecommendation = db.get('SELECT id FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, targetCompanyId]);
   const sourceRecommendation = db.get('SELECT * FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
   if (targetRecommendation) db.run('DELETE FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, sourceCompanyId]);
@@ -346,7 +347,21 @@ function moveRows(db, table, tenantId, sourceCompanyId, targetCompanyId, uniqueC
 
 function locationAgreement(candidate, identity) {
   const supplied = ['city','state','country'].filter((field) => identity[field]);
-  return supplied.length > 0 && supplied.every((field) => candidate[field] && normalizeName(candidate[field]) === normalizeName(identity[field]));
+  const local = ['city','state'].some((field) => meaningfulLocation(identity[field]));
+  return local && supplied.every((field) => candidate[field] && normalizeName(candidate[field]) === normalizeName(identity[field]));
+}
+
+function meaningfulLocation(value) {
+  const normalized = normalizeName(value || '');
+  return Boolean(normalized) && !['unknown','na','n a','none','unspecified','not available'].includes(normalized);
+}
+
+function nameMatchConflicts(candidate, identity) {
+  return ['domain','crm_id','linkedin_url','city','state','country'].some((field) => {
+    if (!candidate[field] || !identity[field]) return false;
+    const normalize = ['city','state','country'].includes(field) ? normalizeName : (value) => String(value).toLowerCase();
+    return normalize(candidate[field]) !== normalize(identity[field]);
+  });
 }
 
 function shouldEnrich(field, current, incoming) {

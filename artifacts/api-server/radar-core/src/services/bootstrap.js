@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { connectorCatalog } from './catalog.js';
+import { connectorCatalog, scoringConfig } from './catalog.js';
 import { hashSecret, id, nowIso, stableJson } from '../lib.js';
 import { hasGoogleSheetsTenantBinding } from '../connectors/google-sheets.js';
 import { recoverExpiredLeases } from './connector-leases.js';
@@ -9,7 +9,7 @@ export function bootstrap(db, { withAdminKey = true } = {}) {
   db.run(
     `INSERT INTO tenants(id, name, slug, settings_json, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-    [config.defaultTenantId, 'Hook Point', 'hook-point', stableJson({ brand: 'Hook Point × Hyper Ads', scoreVersion: 'rules-1.1' }), now, now]
+    [config.defaultTenantId, 'Hook Point', 'hook-point', stableJson({ brand: 'Hook Point × Hyper Ads', scoreVersion: scoringConfig.version }), now, now]
   );
 
   // Runs whose lease expired belong to an instance that is gone; runs with a

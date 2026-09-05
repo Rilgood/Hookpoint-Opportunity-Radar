@@ -40,6 +40,17 @@ export function ingestBatch(db, tenantId, records, context = {}) {
 
 export function ingestOne(db, tenantId, raw, context = {}) {
   let observation = normalizeObservation(raw, context);
+  // Provider identity is tenant-scoped and authoritative for idempotency. A
+  // replay must not enrich an account or create aliases/companies before it is
+  // recognized as an already-ingested observation.
+  if (observation.external_id) {
+    const existing = db.get('SELECT id, company_id FROM observations WHERE tenant_id=? AND source=? AND external_id=? AND type=?',
+      [tenantId, observation.source, observation.external_id, observation.type]);
+    if (existing) {
+      const company = db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, existing.company_id]);
+      return { duplicate: true, observationId: existing.id, company, signals: [], people: 0 };
+    }
+  }
   const company = resolveCompany(db, tenantId, observation.company, observation.source);
   observation = { ...observation, attributes: deriveMetrics(db, tenantId, company.id, observation) };
   const hash = sha256(stableJson({ source: observation.source, external_id: observation.external_id, company: company.domain || company.name, type: observation.type, title: observation.title, observed_at: observation.observed_at, attributes: observation.attributes }));
@@ -73,8 +84,9 @@ function deriveMetrics(db, tenantId, companyId, observation) {
   const attributes = { ...observation.attributes };
   if (observation.type !== 'ad_snapshot' || attributes.metric_scope !== 'account_snapshot' || !finite(attributes.active_ads)) return attributes;
   const previous = db.get(`SELECT attributes_json FROM observations WHERE tenant_id=? AND company_id=? AND source=? AND type='ad_snapshot'
-    AND ${db.sql.jsonText('attributes_json', 'metric_scope')}='account_snapshot' ORDER BY observed_at DESC, ingested_at DESC LIMIT 1`,
-  [tenantId, companyId, observation.source]);
+    AND observed_at<? AND ${db.sql.jsonText('attributes_json', 'metric_scope')}='account_snapshot'
+    ORDER BY observed_at DESC, ingested_at DESC LIMIT 1`,
+  [tenantId, companyId, observation.source, observation.observed_at]);
   const previousAttributes = json(previous?.attributes_json, null);
   if (!previousAttributes || !finite(previousAttributes.active_ads)) return attributes;
   const currentCount = Number(attributes.active_ads);

@@ -10,10 +10,14 @@
     "verify:api-contract": "sh ./scripts/verify-api-contract.sh",
     "verify:api-server": "sh ./scripts/verify-api-server.sh",
     "verify:radar-core": "sh ./scripts/verify-radar-core.sh",
-    "verify:browser-smoke": "flock /tmp/hookpoint-radar-generated-api.lock pnpm --filter @workspace/scripts run browser-smoke",
+    "verify:browser-smoke": "sh ./scripts/with-generated-api-lock.sh pnpm --filter @workspace/scripts run browser-smoke",
     "verify:release": "sh ./scripts/verify-release.sh",
     "db:restore-rehearsal": "bash ./scripts/radar-restore-rehearsal.sh",
-    "db:restore-rehearsal:test": "bash ./scripts/radar-restore-rehearsal.test.sh"
+    "db:restore-rehearsal:test": "bash ./scripts/radar-restore-rehearsal.test.sh",
+    "demo": "node scripts/local-demo.mjs",
+    "preflight:production": "node scripts/production-preflight.mjs",
+    "verify:production-preflight": "node --test scripts/production-preflight.test.mjs",
+    "verify:production-rehearsal": "node scripts/production-rehearsal.mjs"
   },
   "private": true,
   "dependencies": {

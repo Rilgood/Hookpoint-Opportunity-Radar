@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error The radar core is plain JavaScript without TS declarations.
 import { openDatabase } from "../../api-server/radar-core/src/db/index.js";
@@ -28,6 +29,10 @@ export interface RadarDatabase {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultDatabasePath = path.resolve(here, "../../api-server/data/hookpoint-radar.sqlite");
+// Keep snapshots and browser expectations aligned with the checked-in model.
+export const DEFAULT_SCORING_VERSION: string = JSON.parse(
+  fs.readFileSync(path.resolve(here, "../../api-server/radar-core/config/scoring.json"), "utf8"),
+).version;
 
 /**
  * Resolution order mirrors the API server: E2E_DATABASE_URL, then the
@@ -94,7 +99,7 @@ export function seedCalibrationCohort(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
   const insertSnapshot = `INSERT INTO score_snapshots(id, tenant_id, company_id, score_version, opportunity_score, opportunity_tier,
        fit_score, need_score, intent_score, timing_score, risk_score, active_signal_count, components_json, computed_at)
-     VALUES (?, ?, ?, 'rules-1.1', 0, 'cold', ?, ?, 0, 0, 0, 0, '{}', ?)`;
+     VALUES (?, ?, ?, ?, 10, 'cold', ?, ?, 0, 0, 0, 0, '{}', ?)`;
   const insertOutcome = `INSERT INTO outcomes(id, tenant_id, company_id, outcome_type, score_at_outcome, metadata_json, occurred_at, created_at)
      VALUES (?, ?, ?, ?, 10, '{}', ?, ?)`;
   const holdoutStart = Math.floor(size * 0.75);
@@ -105,9 +110,12 @@ export function seedCalibrationCohort(
       const companyId = `${runId}-calibration-${index}`;
       const name = `E2E calibration ${index} (${runId})`;
       const occurredAt = new Date(Date.UTC(2021, 0, index + 1)).toISOString();
+      const scoredAt = new Date(Date.parse(occurredAt) - 1_000).toISOString();
       const qualified = index >= holdoutStart ? index % 2 === 0 : index % 3 === 0;
       db.run(insertCompany, [companyId, tenantId, name, name.toLowerCase(), `${companyId}.example.com`, 10, now, now]);
-      db.run(insertSnapshot, [`${companyId}-snapshot`, tenantId, companyId, qualified ? 0 : 100, qualified ? 70 : 0, occurredAt]);
+      // These legacy outcome rows have no provenance metadata. They remain
+      // calibration-eligible because a matching score exists before the event.
+      db.run(insertSnapshot, [`${companyId}-snapshot`, tenantId, companyId, DEFAULT_SCORING_VERSION, qualified ? 0 : 100, qualified ? 70 : 0, scoredAt]);
       db.run(insertOutcome, [`${companyId}-outcome`, tenantId, companyId, qualified ? "meeting" : "lost", occurredAt, now]);
     }
   });

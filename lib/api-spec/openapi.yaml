@@ -11,6 +11,335 @@ tags:
   - name: health
   - name: radar
 paths:
+  /v1/workspace-readiness:
+    {
+      "get":
+        {
+          "operationId": "getRadarWorkspaceReadiness",
+          "tags": ["radar"],
+          "summary": "Read source prerequisites and evidence-backed workspace setup progress",
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Result",
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            {
+                              "$ref": "#/components/schemas/WorkspaceReadinessResponse",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+  /v1/work-items:
+    {
+      "get":
+        {
+          "operationId": "listRadarWorkItems",
+          "tags": ["radar"],
+          "summary": "List saved work and authoritative filtered counts",
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Result",
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            {
+                              "$ref": "#/components/schemas/WorkItemListResponse",
+                            },
+                        },
+                    },
+                },
+            },
+          "parameters":
+            [
+              {
+                "name": "view",
+                "in": "query",
+                "required": false,
+                "schema":
+                  {
+                    "type": "string",
+                    "enum":
+                      [
+                        "all",
+                        "open",
+                        "today",
+                        "due",
+                        "overdue",
+                        "upcoming",
+                        "snoozed",
+                        "completed",
+                        "done",
+                        "dismissed",
+                      ],
+                  },
+              },
+              {
+                "name": "company_id",
+                "in": "query",
+                "required": false,
+                "schema": { "type": "string" },
+              },
+              {
+                "name": "owner_name",
+                "in": "query",
+                "required": false,
+                "schema": { "type": "string" },
+              },
+              {
+                "name": "q",
+                "in": "query",
+                "required": false,
+                "schema": { "type": "string" },
+              },
+              {
+                "name": "time_zone",
+                "in": "query",
+                "required": false,
+                "schema": { "type": "string" },
+              },
+              {
+                "name": "limit",
+                "in": "query",
+                "required": false,
+                "schema": { "type": "integer", "minimum": 1, "maximum": 200 },
+              },
+              {
+                "name": "offset",
+                "in": "query",
+                "required": false,
+                "schema": { "type": "integer", "minimum": 0 },
+              },
+            ],
+        },
+      "post":
+        {
+          "operationId": "createRadarWorkItem",
+          "tags": ["radar"],
+          "summary": "Save an accountable next action",
+          "responses":
+            {
+              "201":
+                {
+                  "description": "Result",
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            { "$ref": "#/components/schemas/WorkItemResponse" },
+                        },
+                    },
+                },
+            },
+          "requestBody":
+            {
+              "required": true,
+              "content":
+                {
+                  "application/json":
+                    {
+                      "schema":
+                        { "$ref": "#/components/schemas/CreateWorkItemInput" },
+                    },
+                },
+            },
+        },
+    }
+  /v1/work-items/{id}:
+    {
+      "get":
+        {
+          "operationId": "getRadarWorkItem",
+          "tags": ["radar"],
+          "summary": "Get a saved work item",
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Result",
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            { "$ref": "#/components/schemas/WorkItemResponse" },
+                        },
+                    },
+                },
+            },
+          "parameters":
+            [
+              {
+                "name": "id",
+                "in": "path",
+                "required": true,
+                "schema": { "type": "string" },
+              },
+            ],
+        },
+      "patch":
+        {
+          "operationId": "updateRadarWorkItem",
+          "tags": ["radar"],
+          "summary": "Complete, snooze, reschedule, dismiss or reopen saved work",
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Result",
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            { "$ref": "#/components/schemas/WorkItemResponse" },
+                        },
+                    },
+                },
+            },
+          "parameters":
+            [
+              {
+                "name": "id",
+                "in": "path",
+                "required": true,
+                "schema": { "type": "string" },
+              },
+            ],
+          "requestBody":
+            {
+              "required": true,
+              "content":
+                {
+                  "application/json":
+                    {
+                      "schema":
+                        { "$ref": "#/components/schemas/UpdateWorkItemInput" },
+                    },
+                },
+            },
+        },
+    }
+  /v1/companies/{id}/evidence-reviews:
+    {
+      "get":
+        {
+          "operationId": "listRadarEvidenceReviews",
+          "tags": ["radar"],
+          "summary": "List source observations and their review decisions",
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Result",
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            {
+                              "$ref": "#/components/schemas/EvidenceReviewListResponse",
+                            },
+                        },
+                    },
+                },
+            },
+          "parameters":
+            [
+              {
+                "name": "id",
+                "in": "path",
+                "required": true,
+                "schema": { "type": "string" },
+              },
+              {
+                "name": "status",
+                "in": "query",
+                "required": false,
+                "schema":
+                  {
+                    "type": "string",
+                    "enum":
+                      [
+                        "all",
+                        "unreviewed",
+                        "verified",
+                        "rejected",
+                        "needs_review",
+                      ],
+                  },
+              },
+              {
+                "name": "limit",
+                "in": "query",
+                "required": false,
+                "schema": { "type": "integer", "minimum": 1, "maximum": 200 },
+              },
+              {
+                "name": "offset",
+                "in": "query",
+                "required": false,
+                "schema": { "type": "integer", "minimum": 0 },
+              },
+            ],
+        },
+      "post":
+        {
+          "operationId": "reviewRadarEvidence",
+          "tags": ["radar"],
+          "summary": "Review evidence and refresh the company score",
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Result",
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            {
+                              "$ref": "#/components/schemas/ReviewEvidenceResponse",
+                            },
+                        },
+                    },
+                },
+            },
+          "parameters":
+            [
+              {
+                "name": "id",
+                "in": "path",
+                "required": true,
+                "schema": { "type": "string" },
+              },
+            ],
+          "requestBody":
+            {
+              "required": true,
+              "content":
+                {
+                  "application/json":
+                    {
+                      "schema":
+                        { "$ref": "#/components/schemas/ReviewEvidenceInput" },
+                    },
+                },
+            },
+        },
+    }
   /healthz:
     get:
       operationId: healthCheck
@@ -53,6 +382,10 @@ paths:
           name: identity_review_status
           schema:
             $ref: "#/components/schemas/IdentityReviewStatus"
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/CompanyStatus"
         - in: query
           name: min_score
           schema:
@@ -472,6 +805,458 @@ components:
       schema:
         type: string
   schemas:
+    WorkItem:
+      {
+        "type": "object",
+        "required":
+          [
+            "id",
+            "company_id",
+            "company_name",
+            "company_status",
+            "title",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "owner_name",
+            "note",
+            "due_at",
+            "snoozed_until",
+            "resolution_note",
+            "completed_at",
+            "suggested_next_action",
+            "status",
+            "is_actionable",
+          ],
+        "properties":
+          {
+            "id": { "type": "string" },
+            "company_id": { "type": "string" },
+            "company_name": { "type": "string" },
+            "company_status": { "type": "string" },
+            "title": { "type": "string" },
+            "created_at": { "type": "string" },
+            "updated_at": { "type": "string" },
+            "created_by": { "type": "string" },
+            "updated_by": { "type": "string" },
+            "owner_name": { "type": ["string", "null"] },
+            "note": { "type": ["string", "null"] },
+            "due_at": { "type": ["string", "null"] },
+            "snoozed_until": { "type": ["string", "null"] },
+            "resolution_note": { "type": ["string", "null"] },
+            "completed_at": { "type": ["string", "null"] },
+            "suggested_next_action": { "type": ["string", "null"] },
+            "status":
+              { "type": "string", "enum": ["open", "done", "dismissed"] },
+            "is_actionable": { "type": "boolean" },
+          },
+      }
+    WorkItemResponse:
+      {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties":
+          {
+            "data": { "$ref": "#/components/schemas/WorkItem" },
+            "meta": { "$ref": "#/components/schemas/ResponseMeta" },
+          },
+      }
+    CreateWorkItemInput:
+      {
+        "type": "object",
+        "required": ["company_id", "title"],
+        "properties":
+          {
+            "company_id":
+              { "type": "string", "minLength": 1, "maxLength": 200 },
+            "title": { "type": "string", "minLength": 1, "maxLength": 240 },
+            "owner_name": { "type": ["string", "null"], "maxLength": 200 },
+            "note": { "type": ["string", "null"], "maxLength": 2000 },
+            "due_at": { "type": ["string", "null"] },
+          },
+        "additionalProperties": false,
+      }
+    UpdateWorkItemInput:
+      {
+        "type": "object",
+        "required": [],
+        "properties":
+          {
+            "title": { "type": "string", "minLength": 1, "maxLength": 240 },
+            "owner_name": { "type": ["string", "null"], "maxLength": 200 },
+            "note": { "type": ["string", "null"], "maxLength": 2000 },
+            "due_at": { "type": ["string", "null"] },
+            "status":
+              { "type": "string", "enum": ["open", "done", "dismissed"] },
+            "snoozed_until": { "type": ["string", "null"] },
+            "resolution_note":
+              { "type": ["string", "null"], "maxLength": 2000 },
+          },
+        "additionalProperties": false,
+        "minProperties": 1,
+      }
+    WorkItemList:
+      {
+        "type": "object",
+        "required":
+          ["data", "total", "limit", "offset", "counts", "as_of", "time_zone"],
+        "properties":
+          {
+            "data":
+              {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/WorkItem" },
+              },
+            "total": { "type": "integer", "minimum": 0 },
+            "limit": { "type": "integer", "minimum": 0 },
+            "offset": { "type": "integer", "minimum": 0 },
+            "counts":
+              {
+                "type": "object",
+                "required":
+                  [
+                    "all",
+                    "open",
+                    "today",
+                    "due",
+                    "overdue",
+                    "upcoming",
+                    "snoozed",
+                    "completed",
+                    "dismissed",
+                  ],
+                "properties":
+                  {
+                    "all": { "type": "integer", "minimum": 0 },
+                    "open": { "type": "integer", "minimum": 0 },
+                    "today": { "type": "integer", "minimum": 0 },
+                    "due": { "type": "integer", "minimum": 0 },
+                    "overdue": { "type": "integer", "minimum": 0 },
+                    "upcoming": { "type": "integer", "minimum": 0 },
+                    "snoozed": { "type": "integer", "minimum": 0 },
+                    "completed": { "type": "integer", "minimum": 0 },
+                    "dismissed": { "type": "integer", "minimum": 0 },
+                  },
+              },
+            "as_of": { "type": "string" },
+            "time_zone": { "type": "string" },
+          },
+      }
+    WorkItemListResponse:
+      {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties":
+          {
+            "data": { "$ref": "#/components/schemas/WorkItemList" },
+            "meta": { "$ref": "#/components/schemas/ResponseMeta" },
+          },
+      }
+    EvidenceReview:
+      {
+        "type": "object",
+        "required":
+          ["observation_id", "status", "note", "reviewed_by", "reviewed_at"],
+        "properties":
+          {
+            "observation_id": { "type": "string" },
+            "status":
+              {
+                "type": "string",
+                "enum": ["unreviewed", "verified", "rejected", "needs_review"],
+              },
+            "note": { "type": ["string", "null"] },
+            "reviewed_by": { "type": ["string", "null"] },
+            "reviewed_at": { "type": ["string", "null"] },
+          },
+      }
+    EvidenceReviewEntry:
+      {
+        "type": "object",
+        "required":
+          [
+            "observation_id",
+            "status",
+            "note",
+            "reviewed_by",
+            "reviewed_at",
+            "title",
+            "source",
+            "url",
+            "observed_at",
+          ],
+        "properties":
+          {
+            "observation_id": { "type": "string" },
+            "status":
+              {
+                "type": "string",
+                "enum": ["unreviewed", "verified", "rejected", "needs_review"],
+              },
+            "note": { "type": ["string", "null"] },
+            "reviewed_by": { "type": ["string", "null"] },
+            "reviewed_at": { "type": ["string", "null"] },
+            "title": { "type": "string" },
+            "source": { "type": "string" },
+            "url": { "type": ["string", "null"] },
+            "observed_at": { "type": "string" },
+          },
+      }
+    EvidenceReviewList:
+      {
+        "type": "object",
+        "required": ["data", "total", "limit", "offset"],
+        "properties":
+          {
+            "data":
+              {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/EvidenceReviewEntry" },
+              },
+            "total": { "type": "integer", "minimum": 0 },
+            "limit": { "type": "integer", "minimum": 0 },
+            "offset": { "type": "integer", "minimum": 0 },
+          },
+      }
+    EvidenceReviewListResponse:
+      {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties":
+          {
+            "data": { "$ref": "#/components/schemas/EvidenceReviewList" },
+            "meta": { "$ref": "#/components/schemas/ResponseMeta" },
+          },
+      }
+    ReviewEvidenceInput:
+      {
+        "type": "object",
+        "required": ["observation_id", "status"],
+        "properties":
+          {
+            "observation_id": { "type": "string" },
+            "status":
+              {
+                "type": "string",
+                "enum": ["verified", "rejected", "needs_review"],
+              },
+            "note": { "type": ["string", "null"], "maxLength": 2000 },
+          },
+        "additionalProperties": false,
+        "description": "Rejection and needs_review require a note. Rejection excludes this observation from current scoring and immediately rescores. Verification records human review without increasing confidence.",
+      }
+    ReviewEvidenceResult:
+      {
+        "type": "object",
+        "required": ["review", "company"],
+        "properties":
+          {
+            "review": { "$ref": "#/components/schemas/EvidenceReview" },
+            "company": { "$ref": "#/components/schemas/Company" },
+          },
+      }
+    ReviewEvidenceResponse:
+      {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties":
+          {
+            "data": { "$ref": "#/components/schemas/ReviewEvidenceResult" },
+            "meta": { "$ref": "#/components/schemas/ResponseMeta" },
+          },
+      }
+    SourceReadiness:
+      {
+        "type": "object",
+        "required":
+          [
+            "key",
+            "label",
+            "purpose",
+            "description",
+            "inputs",
+            "implemented",
+            "configured",
+            "enabled",
+            "mode",
+            "cadence",
+            "status",
+            "requirements",
+            "latest_run",
+          ],
+        "properties":
+          {
+            "key": { "type": "string" },
+            "label": { "type": "string" },
+            "purpose": { "type": "string" },
+            "description": { "type": "string" },
+            "inputs": { "type": "array", "items": { "type": "string" } },
+            "implemented": { "type": "boolean" },
+            "configured": { "type": "boolean" },
+            "enabled": { "type": "boolean" },
+            "mode": { "type": "string" },
+            "cadence": { "type": "string" },
+            "status": { "type": "string" },
+            "requirements":
+              {
+                "type": "array",
+                "items":
+                  {
+                    "type": "object",
+                    "required": ["name", "present"],
+                    "properties":
+                      {
+                        "name": { "type": "string" },
+                        "present": { "type": "boolean" },
+                      },
+                  },
+              },
+            "latest_run":
+              {
+                "anyOf":
+                  [
+                    {
+                      "type": "object",
+                      "required":
+                        [
+                          "status",
+                          "finished_at",
+                          "seen",
+                          "inserted",
+                          "rejected",
+                        ],
+                      "properties":
+                        {
+                          "status": { "type": "string" },
+                          "finished_at": { "type": ["string", "null"] },
+                          "seen": { "type": "integer", "minimum": 0 },
+                          "inserted": { "type": "integer", "minimum": 0 },
+                          "rejected": { "type": "integer", "minimum": 0 },
+                        },
+                    },
+                    { "type": "null" },
+                  ],
+              },
+          },
+      }
+    WorkspaceReadiness:
+      {
+        "type": "object",
+        "required":
+          [
+            "as_of",
+            "mode",
+            "runtime",
+            "counts",
+            "sources",
+            "calibration",
+            "steps",
+          ],
+        "properties":
+          {
+            "as_of": { "type": "string" },
+            "mode": { "type": "string" },
+            "runtime":
+              {
+                "type": "object",
+                "required":
+                  [
+                    "ready",
+                    "schema_version",
+                    "storage_mode",
+                    "authenticated",
+                    "scheduler_enabled",
+                    "issues",
+                  ],
+                "properties":
+                  {
+                    "ready": { "type": "boolean" },
+                    "schema_version": { "type": "integer", "minimum": 0 },
+                    "storage_mode": { "type": "string" },
+                    "authenticated": { "type": "boolean" },
+                    "scheduler_enabled": { "type": "boolean" },
+                    "issues":
+                      {
+                        "type": "array",
+                        "items":
+                          {
+                            "type": "object",
+                            "required": ["code", "severity", "message"],
+                            "properties":
+                              {
+                                "code": { "type": "string" },
+                                "severity": { "type": "string" },
+                                "message": { "type": "string" },
+                              },
+                          },
+                      },
+                  },
+              },
+            "counts":
+              {
+                "type": "object",
+                "required":
+                  [
+                    "companies",
+                    "observations",
+                    "reviewed_evidence",
+                    "assigned_work",
+                    "work_items",
+                    "completed_work",
+                    "outcomes",
+                    "pending_identity",
+                  ],
+                "properties":
+                  {
+                    "companies": { "type": "integer", "minimum": 0 },
+                    "observations": { "type": "integer", "minimum": 0 },
+                    "reviewed_evidence": { "type": "integer", "minimum": 0 },
+                    "assigned_work": { "type": "integer", "minimum": 0 },
+                    "work_items": { "type": "integer", "minimum": 0 },
+                    "completed_work": { "type": "integer", "minimum": 0 },
+                    "outcomes": { "type": "integer", "minimum": 0 },
+                    "pending_identity": { "type": "integer", "minimum": 0 },
+                  },
+              },
+            "sources":
+              {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/SourceReadiness" },
+              },
+            "calibration":
+              { "$ref": "#/components/schemas/CalibrationSummary" },
+            "steps":
+              {
+                "type": "array",
+                "items":
+                  {
+                    "type": "object",
+                    "required":
+                      ["key", "title", "complete", "value", "href", "detail"],
+                    "properties":
+                      {
+                        "key": { "type": "string" },
+                        "title": { "type": "string" },
+                        "complete": { "type": "boolean" },
+                        "value": { "type": "integer", "minimum": 0 },
+                        "href": { "type": "string" },
+                        "detail": { "type": "string" },
+                      },
+                  },
+              },
+          },
+      }
+    WorkspaceReadinessResponse:
+      {
+        "type": "object",
+        "required": ["data", "meta"],
+        "properties":
+          {
+            "data": { "$ref": "#/components/schemas/WorkspaceReadiness" },
+            "meta": { "$ref": "#/components/schemas/ResponseMeta" },
+          },
+      }
     HealthStatus:
       type: object
       required: [status]
@@ -491,7 +1276,19 @@ components:
       enum: [hot, warm, watch, cold, suppressed]
     CompanyStatus:
       type: string
-      enum: [prospect, accepted, rejected, contacted, replied, meeting, opportunity, customer, lost, disqualified]
+      enum:
+        [
+          prospect,
+          accepted,
+          rejected,
+          contacted,
+          replied,
+          meeting,
+          opportunity,
+          customer,
+          lost,
+          disqualified,
+        ]
     IdentityReviewStatus:
       type: string
       enum: [unreviewed, needs_review, confirmed, separated]
@@ -658,7 +1455,19 @@ components:
           $ref: "#/components/schemas/ResponseMeta"
     DashboardSummary:
       type: object
-      required: [companies, hot, warm, watch, average_score, active_signals, new_signals_7d, connectors, top_industries, tiers]
+      required:
+        [
+          companies,
+          hot,
+          warm,
+          watch,
+          average_score,
+          active_signals,
+          new_signals_7d,
+          connectors,
+          top_industries,
+          tiers,
+        ]
       properties:
         companies:
           type: number
@@ -740,7 +1549,25 @@ components:
           $ref: "#/components/schemas/ResponseMeta"
     Signal:
       type: object
-      required: [id, company_id, company_name, signal_key, label, category, base_weight, strength, contribution, summary, source_count, status, first_seen_at, last_seen_at, opportunity_score, opportunity_tier]
+      required:
+        [
+          id,
+          company_id,
+          company_name,
+          signal_key,
+          label,
+          category,
+          base_weight,
+          strength,
+          contribution,
+          summary,
+          source_count,
+          status,
+          first_seen_at,
+          last_seen_at,
+          opportunity_score,
+          opportunity_tier,
+        ]
       properties:
         id:
           type: string
@@ -788,6 +1615,15 @@ components:
       type: object
       required: [id, source, type, title, confidence, observed_at]
       properties:
+        review_status:
+          type: string
+          enum: [unreviewed, verified, rejected, needs_review]
+        review_note:
+          type: [string, "null"]
+        reviewed_by:
+          type: [string, "null"]
+        reviewed_at:
+          type: [string, "null"]
         id:
           type: string
         source:
@@ -856,7 +1692,17 @@ components:
           type: string
     MergedRecommendationContext:
       type: object
-      required: [source_company_id, source_name, merged_at, offer, rationale, outreach_angle, next_action, proof_points]
+      required:
+        [
+          source_company_id,
+          source_name,
+          merged_at,
+          offer,
+          rationale,
+          outreach_angle,
+          next_action,
+          proof_points,
+        ]
       properties:
         source_company_id:
           type: string
@@ -891,7 +1737,8 @@ components:
         created_at: { type: string, format: date-time }
     IdentityReview:
       type: object
-      required: [status, aliases, resolution_events, conflicting_attributes, actions]
+      required:
+        [status, aliases, resolution_events, conflicting_attributes, actions]
       properties:
         status:
           $ref: "#/components/schemas/IdentityReviewStatus"
@@ -916,7 +1763,18 @@ components:
             additionalProperties: true
     CompanyDetail:
       type: object
-      required: [company, signals, observations, people, merged_recommendation_contexts, events, outcomes, score_history, identity_review]
+      required:
+        [
+          company,
+          signals,
+          observations,
+          people,
+          merged_recommendation_contexts,
+          events,
+          outcomes,
+          score_history,
+          identity_review,
+        ]
       properties:
         company:
           $ref: "#/components/schemas/Company"
@@ -972,7 +1830,21 @@ components:
       properties:
         outcome_type:
           type: string
-          enum: [accepted, rejected, contacted, positive_reply, negative_reply, meeting, opportunity, won, lost, disqualified, suppression_correct, suppression_wrong]
+          enum:
+            [
+              accepted,
+              rejected,
+              contacted,
+              positive_reply,
+              negative_reply,
+              meeting,
+              opportunity,
+              won,
+              lost,
+              disqualified,
+              suppression_correct,
+              suppression_wrong,
+            ]
         note:
           type: string
     OutcomeResponse:
@@ -1022,7 +1894,18 @@ components:
           type: number
     CalibrationScoreBand:
       type: object
-      required: [score_band, labeled, qualified, negative, raw_qualified_rate, smoothed_qualified_rate, wilson_95_lower, wilson_95_upper, qualified_rate_lift_vs_cold]
+      required:
+        [
+          score_band,
+          labeled,
+          qualified,
+          negative,
+          raw_qualified_rate,
+          smoothed_qualified_rate,
+          wilson_95_lower,
+          wilson_95_upper,
+          qualified_rate_lift_vs_cold,
+        ]
       properties:
         score_band:
           type: string
@@ -1048,7 +1931,17 @@ components:
           type: [number, "null"]
     CalibrationSummary:
       type: object
-      required: [labeled_accounts, qualified_accounts, negative_accounts, minimum_sample, min_each_class, sufficient_sample, cohort_note, recommendation]
+      required:
+        [
+          labeled_accounts,
+          qualified_accounts,
+          negative_accounts,
+          minimum_sample,
+          min_each_class,
+          sufficient_sample,
+          cohort_note,
+          recommendation,
+        ]
       properties:
         labeled_accounts:
           type: number
@@ -1128,7 +2021,20 @@ components:
         top_quartile_qualified_rate: { type: number }
     ScoreCalibrationGuardrails:
       type: object
-      required: [cohort, holdout_accounts, qualified_accounts, negative_accounts, minimum_sample, min_each_class, training_accounts, training_qualified_accounts, training_negative_accounts, minimum_training_sample, min_training_each_class]
+      required:
+        [
+          cohort,
+          holdout_accounts,
+          qualified_accounts,
+          negative_accounts,
+          minimum_sample,
+          min_each_class,
+          training_accounts,
+          training_qualified_accounts,
+          training_negative_accounts,
+          minimum_training_sample,
+          min_training_each_class,
+        ]
       properties:
         cohort: { type: string }
         holdout_accounts: { type: number }
@@ -1145,7 +2051,17 @@ components:
         scored_training_accounts: { type: number }
     ScoreVersion:
       type: object
-      required: [id, version, status, base_version, config, evaluation, created_at, created_by]
+      required:
+        [
+          id,
+          version,
+          status,
+          base_version,
+          config,
+          evaluation,
+          created_at,
+          created_by,
+        ]
       properties:
         id: { type: string }
         version: { type: string }
@@ -1156,7 +2072,8 @@ components:
           type: object
           required: [guardrails, before, after, explanation]
           properties:
-            guardrails: { $ref: "#/components/schemas/ScoreCalibrationGuardrails" }
+            guardrails:
+              { $ref: "#/components/schemas/ScoreCalibrationGuardrails" }
             before: { $ref: "#/components/schemas/ScoreMetrics" }
             after: { $ref: "#/components/schemas/ScoreMetrics" }
             explanation:
@@ -1206,7 +2123,8 @@ components:
           type: string
     ObservationInput:
       type: object
-      required: [source, external_id, type, title, confidence, company, attributes]
+      required:
+        [source, external_id, type, title, confidence, company, attributes]
       properties:
         source:
           type: string
@@ -1279,7 +2197,20 @@ components:
           $ref: "#/components/schemas/ResponseMeta"
     Connector:
       type: object
-      required: [connector_key, label, category, provider, mode, cadence, enabled, configured, status, implemented, run_count]
+      required:
+        [
+          connector_key,
+          label,
+          category,
+          provider,
+          mode,
+          cadence,
+          enabled,
+          configured,
+          status,
+          implemented,
+          run_count,
+        ]
       properties:
         connector_key:
           type: string
@@ -1328,11 +2259,31 @@ components:
     ConnectorSchedule:
       type: object
       description: Why a connector's cadence will or will not run next. Derived by the server from the persisted connector state.
-      required: [state, reason, will_run, next_run_at, backoff_until, consecutive_failures]
+      required:
+        [
+          state,
+          reason,
+          will_run,
+          next_run_at,
+          backoff_until,
+          consecutive_failures,
+        ]
       properties:
         state:
           type: string
-          enum: [push, adapter_pending, needs_configuration, disabled, running, backoff, input_rejected, manual, due, waiting]
+          enum:
+            [
+              push,
+              adapter_pending,
+              needs_configuration,
+              disabled,
+              running,
+              backoff,
+              input_rejected,
+              manual,
+              due,
+              waiting,
+            ]
         reason:
           type: string
         will_run:
@@ -1529,7 +2480,23 @@ components:
           type: string
     ConnectorRunResult:
       type: object
-      required: [run_id, connector, status, cursor, resumed, seen, inserted, duplicates, rejected, signals, signals_created, people, companies, errors]
+      required:
+        [
+          run_id,
+          connector,
+          status,
+          cursor,
+          resumed,
+          seen,
+          inserted,
+          duplicates,
+          rejected,
+          signals,
+          signals_created,
+          people,
+          companies,
+          errors,
+        ]
       properties:
         run_id:
           type: string
@@ -1600,7 +2567,15 @@ components:
           $ref: "#/components/schemas/ErrorResponseMeta"
     DataQuality:
       type: object
-      required: [observations, rejections, identity, stale_companies, connector_health, source_freshness]
+      required:
+        [
+          observations,
+          rejections,
+          identity,
+          stale_companies,
+          connector_health,
+          source_freshness,
+        ]
       properties:
         observations:
           type: object
@@ -1628,7 +2603,8 @@ components:
               type: number
         identity:
           type: object
-          required: [companies, missing_domain, needs_review, average_confidence]
+          required:
+            [companies, missing_domain, needs_review, average_confidence]
           properties:
             companies:
               type: number
@@ -1688,7 +2664,15 @@ components:
           $ref: "#/components/schemas/ResponseMeta"
     ReviewQueueItem:
       type: object
-      required: [id, name, identity_confidence, identity_method, opportunity_score, opportunity_tier]
+      required:
+        [
+          id,
+          name,
+          identity_confidence,
+          identity_method,
+          opportunity_score,
+          opportunity_tier,
+        ]
       properties:
         id:
           type: string
@@ -1720,7 +2704,15 @@ components:
         at: { type: string, format: date-time }
         kind:
           type: string
-          enum: [signal_detected, signal_corroborated, tier_changed, identity_reviewed, outcome_recorded, signal_expired]
+          enum:
+            [
+              signal_detected,
+              signal_corroborated,
+              tier_changed,
+              identity_reviewed,
+              outcome_recorded,
+              signal_expired,
+            ]
         title: { type: string }
         detail: { type: string }
         signal_key: { type: string }
@@ -1729,13 +2721,29 @@ components:
           enum: [high, medium, low]
     InsightDriver:
       type: object
-      required: [signal_key, label, dimension, contribution, share_of_positive_contribution, source_count, evidence_count, confidence, days_since_last_seen, half_life_days, recency_factor, is_new, is_corroborated]
+      required:
+        [
+          signal_key,
+          label,
+          dimension,
+          contribution,
+          share_of_positive_contribution,
+          source_count,
+          evidence_count,
+          confidence,
+          days_since_last_seen,
+          half_life_days,
+          recency_factor,
+          is_new,
+          is_corroborated,
+        ]
       properties:
         signal_key: { type: string }
         label: { type: string }
         dimension: { type: string }
         contribution: { type: number }
-        share_of_positive_contribution: { type: number, minimum: 0, maximum: 100 }
+        share_of_positive_contribution:
+          { type: number, minimum: 0, maximum: 100 }
         source_count: { type: number }
         evidence_count: { type: number }
         confidence: { type: number }
@@ -1784,7 +2792,17 @@ components:
         qualified_rate: { type: number }
     CompanyInsights:
       type: object
-      required: [company_id, generated_at, story, why_now, action_window, counter_evidence, what_would_change, comparable_accounts]
+      required:
+        [
+          company_id,
+          generated_at,
+          story,
+          why_now,
+          action_window,
+          counter_evidence,
+          what_would_change,
+          comparable_accounts,
+        ]
       properties:
         company_id: { type: string }
         generated_at: { type: string, format: date-time }
@@ -1794,7 +2812,15 @@ components:
             $ref: "#/components/schemas/InsightStoryEntry"
         why_now:
           type: object
-          required: [headline, drivers, new_since_days, new_signal_count, corroborated_signal_count, active_dimensions]
+          required:
+            [
+              headline,
+              drivers,
+              new_since_days,
+              new_signal_count,
+              corroborated_signal_count,
+              active_dimensions,
+            ]
           properties:
             headline: { type: string }
             drivers:
@@ -1809,7 +2835,16 @@ components:
               items: { type: string }
         action_window:
           type: object
-          required: [strongest_signal_key, strongest_signal_label, half_life_days, days_until_half_strength, projected_score_in_14_days, projected_score_in_30_days, urgency]
+          required:
+            [
+              strongest_signal_key,
+              strongest_signal_label,
+              half_life_days,
+              days_until_half_strength,
+              projected_score_in_14_days,
+              projected_score_in_30_days,
+              urgency,
+            ]
           properties:
             strongest_signal_key: { type: ["string", "null"] }
             strongest_signal_label: { type: ["string", "null"] }
@@ -1832,7 +2867,20 @@ components:
             $ref: "#/components/schemas/ChangeSuggestion"
         comparable_accounts:
           type: object
-          required: [matched_on, labeled, qualified, negative, qualified_rate, wilson_95_lower, wilson_95_upper, median_days_signal_to_qualified, sufficient_sample, tenant_base_rate, note]
+          required:
+            [
+              matched_on,
+              labeled,
+              qualified,
+              negative,
+              qualified_rate,
+              wilson_95_lower,
+              wilson_95_upper,
+              median_days_signal_to_qualified,
+              sufficient_sample,
+              tenant_base_rate,
+              note,
+            ]
           properties:
             matched_on:
               type: array
@@ -1862,7 +2910,21 @@ components:
           $ref: "#/components/schemas/ResponseMeta"
     EffectivenessRow:
       type: object
-      required: [signal_key, label, dimension, labeled, qualified, negative, qualified_rate, wilson_95_lower, wilson_95_upper, lift_vs_base_pp, activity_count, verdict]
+      required:
+        [
+          signal_key,
+          label,
+          dimension,
+          labeled,
+          qualified,
+          negative,
+          qualified_rate,
+          wilson_95_lower,
+          wilson_95_upper,
+          lift_vs_base_pp,
+          activity_count,
+          verdict,
+        ]
       properties:
         signal_key: { type: string }
         label: { type: string }
@@ -1877,10 +2939,27 @@ components:
         activity_count: { type: number }
         verdict:
           type: string
-          enum: [insufficient, associated_with_pipeline, activity_without_pipeline, neutral]
+          enum:
+            [
+              insufficient,
+              associated_with_pipeline,
+              activity_without_pipeline,
+              neutral,
+            ]
     SourceEffectivenessRow:
       type: object
-      required: [source, accounts_touched, labeled_accounts, qualified_accounts, qualified_rate, last_observed_at, days_since_last_observation, rejection_count, verdict]
+      required:
+        [
+          source,
+          accounts_touched,
+          labeled_accounts,
+          qualified_accounts,
+          qualified_rate,
+          last_observed_at,
+          days_since_last_observation,
+          rejection_count,
+          verdict,
+        ]
       properties:
         source: { type: string }
         accounts_touched: { type: number }
@@ -1895,7 +2974,17 @@ components:
           enum: [insufficient, producing_pipeline, activity_only, stale]
     SegmentInsight:
       type: object
-      required: [segment, labeled, qualified, negative, qualified_rate, wilson_95_lower, wilson_95_upper, sufficient_sample]
+      required:
+        [
+          segment,
+          labeled,
+          qualified,
+          negative,
+          qualified_rate,
+          wilson_95_lower,
+          wilson_95_upper,
+          sufficient_sample,
+        ]
       properties:
         segment: { type: string }
         labeled: { type: number }
@@ -1907,7 +2996,16 @@ components:
         sufficient_sample: { type: boolean }
     AccountException:
       type: object
-      required: [company_id, name, score_at_outcome, outcome_type, occurred_at, note, top_signals_at_time]
+      required:
+        [
+          company_id,
+          name,
+          score_at_outcome,
+          outcome_type,
+          occurred_at,
+          note,
+          top_signals_at_time,
+        ]
       properties:
         company_id: { type: string }
         name: { type: string }
@@ -1920,7 +3018,16 @@ components:
           items: { type: string }
     FocusAccount:
       type: object
-      required: [company_id, name, opportunity_score, opportunity_tier, priority_score, reasons, identity_confidence]
+      required:
+        [
+          company_id,
+          name,
+          opportunity_score,
+          opportunity_tier,
+          priority_score,
+          reasons,
+          identity_confidence,
+        ]
       properties:
         company_id: { type: string }
         name: { type: string }
@@ -1934,7 +3041,22 @@ components:
         identity_confidence: { type: number }
     AnalyticsInsights:
       type: object
-      required: [generated_at, thresholds, base_rate, signal_effectiveness, source_effectiveness, segments, false_confidence, hidden_wins, decayed_without_action, timing, loss_reasons, focus_list, focus_list_policy]
+      required:
+        [
+          generated_at,
+          thresholds,
+          base_rate,
+          signal_effectiveness,
+          source_effectiveness,
+          segments,
+          false_confidence,
+          hidden_wins,
+          decayed_without_action,
+          timing,
+          loss_reasons,
+          focus_list,
+          focus_list_policy,
+        ]
       properties:
         generated_at: { type: string, format: date-time }
         thresholds:
@@ -1977,7 +3099,14 @@ components:
           type: array
           items:
             type: object
-            required: [company_id, name, expired_signal_label, expired_at, opportunity_score]
+            required:
+              [
+                company_id,
+                name,
+                expired_signal_label,
+                expired_at,
+                opportunity_score,
+              ]
             properties:
               company_id: { type: string }
               name: { type: string }
@@ -2009,7 +3138,14 @@ components:
             $ref: "#/components/schemas/FocusAccount"
         focus_list_policy:
           type: object
-          required: [new_signal_14d, corroborated_positive_signal, identity_unverified, closing_urgency, note]
+          required:
+            [
+              new_signal_14d,
+              corroborated_positive_signal,
+              identity_unverified,
+              closing_urgency,
+              note,
+            ]
           properties:
             new_signal_14d: { type: number }
             corroborated_positive_signal: { type: number }

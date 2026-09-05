@@ -6,7 +6,7 @@ import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
 import { companyDetail } from '../src/services/queries.js';
 import { config } from '../src/config.js';
 import { approveScoreCalibration, evaluateScoreCalibration, outcomeAnalytics, recordOutcome } from '../src/services/outcomes.js';
-import { activeScoringConfig } from '../src/services/catalog.js';
+import { activeScoringConfig, scoringConfig } from '../src/services/catalog.js';
 
 function setup() { const db = openTestDatabase(); bootstrap(db); return db; }
 function addCompany(db, tenantId, companyId, score) {
@@ -16,6 +16,14 @@ function addCompany(db, tenantId, companyId, score) {
 }
 function addOutcome(db, tenantId, companyId, score, outcomeType, occurredAt) {
   db.run('UPDATE companies SET opportunity_score=? WHERE tenant_id=? AND id=?', [score, tenantId, companyId]);
+  const at = new Date(occurredAt).toISOString();
+  // These calibration fixtures assert known historical rankings. Supply that
+  // history explicitly instead of stamping today's score onto a past label.
+  if (!db.get('SELECT id FROM score_snapshots WHERE tenant_id=? AND company_id=? AND computed_at=?', [tenantId, companyId, at])) {
+    db.run(`INSERT INTO score_snapshots(id,tenant_id,company_id,score_version,opportunity_score,opportunity_tier,
+      fit_score,need_score,intent_score,timing_score,risk_score,active_signal_count,components_json,computed_at)
+      VALUES (?,?,?,?,?,'cold',0,0,0,0,0,0,'{}',?)`, [`history-${companyId}-${at}`, tenantId, companyId, scoringConfig.version, score, at]);
+  }
   return recordOutcome(db, tenantId, companyId, { outcome_type: outcomeType, occurred_at: occurredAt });
 }
 
@@ -177,7 +185,7 @@ test('score recommendations require a balanced holdout and only change versions 
   assert.equal(evaluation.status, 'ready');
   assert.equal(evaluation.recommendation.status, 'proposed');
   assert.ok(evaluation.recommendation.evaluation.after.auc > evaluation.recommendation.evaluation.before.auc);
-  assert.equal(activeScoringConfig(db, tenant).version, 'rules-1.1');
+  assert.equal(activeScoringConfig(db, tenant).version, scoringConfig.version);
   const approved = approveScoreCalibration(db, tenant, evaluation.recommendation.id, 'operator-b');
   assert.equal(approved.status, 'approved');
   assert.equal(activeScoringConfig(db, tenant).version, approved.version);
@@ -207,7 +215,7 @@ test('an insufficient holdout is reported as a blocked evaluation with the count
   assert.equal(evaluation.guardrails.min_each_class, 10);
   assert.ok(evaluation.guardrails.holdout_accounts < evaluation.guardrails.minimum_sample);
   assert.match(evaluation.reason, /Holdout needs 30 labels/);
-  assert.equal(activeScoringConfig(db, tenant).version, 'rules-1.1');
+  assert.equal(activeScoringConfig(db, tenant).version, scoringConfig.version);
   db.close();
 });
 

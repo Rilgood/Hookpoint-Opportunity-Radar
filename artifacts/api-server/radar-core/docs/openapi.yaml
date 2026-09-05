@@ -1,8 +1,16 @@
+# Historical partial core reference; not the application code-generation contract.
+# Canonical typed host API: ../../../../lib/api-spec/openapi.yaml
+# New workspace-readiness, work-items and evidence-review routes are documented
+# there and in WORKFLOW_CONTRACT.md. The host spec uses /api + /v1/... paths.
 openapi: 3.1.0
 info:
   title: Hook Point Opportunity Radar API
   version: 1.1.0
-  description: Canonical ingestion, evidence, scoring and connector control for Hook Point warm-lead intelligence.
+  description: >-
+    Historical partial reference for core ingestion, evidence, scoring and connector control.
+    The canonical typed application contract is lib/api-spec/openapi.yaml at the repository root.
+    This reference omits the new workspace-readiness, work-items and evidence-review routes;
+    use the canonical contract and docs/WORKFLOW_CONTRACT.md for those operations.
 servers:
   - url: http://localhost:8787
 security:
@@ -41,6 +49,9 @@ paths:
       parameters:
         - { in: query, name: tier, schema: { type: string, enum: [hot, warm, watch, cold, suppressed] } }
         - { in: query, name: industry, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string, enum: [prospect, accepted, rejected, contacted, replied, meeting, opportunity, customer, lost, disqualified] } }
+        - { in: query, name: identity_review_status, schema: { type: string, enum: [unreviewed, needs_review, confirmed, separated] } }
+        - { in: query, name: monitoring_tier, schema: { type: string } }
         - { in: query, name: min_score, schema: { type: number } }
         - { in: query, name: q, schema: { type: string } }
         - { in: query, name: page, schema: { type: integer, minimum: 1 } }
@@ -245,6 +256,15 @@ paths:
   /api/v1/export/companies.csv:
     get:
       summary: Export ranked accounts as CSV
+      description: Applies the same account filters as the company list across all matching pages, up to the configured export row limit.
+      parameters:
+        - { in: query, name: tier, schema: { type: string, enum: [hot, warm, watch, cold, suppressed] } }
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: industry, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string, enum: [prospect, accepted, rejected, contacted, replied, meeting, opportunity, customer, lost, disqualified] } }
+        - { in: query, name: identity_review_status, schema: { type: string, enum: [unreviewed, needs_review, confirmed, separated] } }
+        - { in: query, name: monitoring_tier, schema: { type: string } }
+        - { in: query, name: min_score, schema: { type: number, minimum: 0, maximum: 100 } }
       responses:
         "200":
           description: CSV export

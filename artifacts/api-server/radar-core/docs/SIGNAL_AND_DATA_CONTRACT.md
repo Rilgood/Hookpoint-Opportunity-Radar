@@ -44,7 +44,7 @@ Valid records commit independently. A bad record produces a rejection entry cont
 
 ## Identity semantics
 
-Canonical domains and URLs are validated before resolution. Match lineage records method and confidence. Domain aliases can locate a company but cannot replace its current canonical domain. Name-plus-location may resolve across sources; name-only matching is scoped to a source already associated with that company and remains low confidence. A name-only record from a new source creates a separate reviewable identity rather than risking a false merge.
+Canonical domains and URLs are validated before resolution. Match lineage records method and confidence. Domain aliases can locate a company but cannot replace its current canonical domain. Name-plus-location may resolve across sources only with a meaningful city or state match; a shared country or placeholder location is insufficient. Name matching cannot override conflicting domains, CRM IDs, LinkedIn URLs or supplied locations. Name-only matching is scoped to a source already associated with that company and remains low confidence. A name-only record from a new source creates a separate reviewable identity rather than risking a false merge.
 
 Recommended activation policy:
 
@@ -67,11 +67,11 @@ The scoring engine enforces this policy: identity confidence below 0.8 caps the 
 | 0.50–0.69 | Search/snippet inference requiring corroboration |
 | Below 0.50 | Human review; insufficient alone for activation |
 
-Signal confidence uses the best recent evidence per independent source plus a bounded lift from additional sources. Repeated records from one source do not receive an independent-source lift.
+Signal confidence uses the best recent evidence per originating publisher host plus a bounded lift from additional hosts. Connector provenance is used when no evidence URL exists. The same canonical article URL counts once even when multiple connectors retrieve it; tracking parameters and fragments do not make another article. Content-identifying query parameters are preserved. Every original observation and signal-evidence link remains available for audit. This is a conservative proxy for independence: different accounts on one social platform share a host, and syndicated rewrites or shared ownership across different hosts are not yet detected.
 
 ## Signal lifecycle
 
-A signal remains active for twice its catalog half-life after its latest evidence. Contribution decays continuously. Evidence/source counts and strength are recalculated from the same active window, so stale historical evidence cannot inflate a reactivated signal.
+A signal remains active for twice its catalog half-life after its latest qualifying evidence. Contribution decays continuously. Evidence/source counts, confidence and strength are recalculated relative to the scoring date, excluding future evidence and evidence older than twice the half-life. Linked observations are checked against the current catalog rules on refresh, so a corrected rule can retire a previous false match without deleting its lineage.
 
 An older record can add lineage but cannot overwrite the latest summary or move expiry backward. A newly current observation can reactivate an expired signal.
 
@@ -82,6 +82,16 @@ Portfolio-level values live in `config/scoring.json` and individual rules in `co
 Every contribution is explainable from signal weight, strength, confidence, recency and corroboration. Dimension totals saturate, signal/dimension breadth bonuses are bounded, and risk is subtracted. Risk at the suppression threshold overrides the commercial tier.
 
 Any threshold/weight change should increment the scoring version, rescore the portfolio, retain before/after snapshots and be evaluated against outcomes.
+
+The default model `rules-1.2` adds originating-URL corroboration controls and current-window evidence revalidation, requires an observed count of at least three marketing openings for a hiring surge, and requires an actual unnegated search phrase for text-based agency intent. An explicit `explicit_agency_search: true` attribute remains authoritative. The stable `creative_fatigue` key is presented as **Creative refresh hypothesis**: creative age, repetition or frequency warrants review but does not establish poor performance. Ad-volume deltas use only strictly preceding account snapshots; reported baseline/delta attributes are retained. Scoring-version changes create a snapshot even when the numeric score is unchanged.
+
+## Outcome chronology and score provenance
+
+An imported outcome is retained at its reported event time. It updates the current pipeline stage only when it is at least as recent as the latest status-bearing outcome or manual stage change; importing an old contact or loss cannot reopen a current customer or remove a newer active recommendation.
+
+The server owns `metadata.score_provenance` and overwrites any caller-supplied value. `basis` is `current_at_recording`, `historical_snapshot`, or `unavailable_historical`; the object also reports `calibration_eligible`, `scored_at`, and the `snapshot_id` when applicable. A backdated event uses the latest score snapshot at or before its event time. If no such snapshot exists, the legacy numeric `score_at_outcome` field is only a current reference value: display **Historical score unavailable**, never present that reference as a known historical prediction.
+
+Unknown historical scores are excluded from calibration, score-band and effectiveness cohorts while their activity and revenue remain counted. The earliest qualifying/negative account label is selected before applying the eligibility check, so a later label cannot conceal an unknown first conversion. The calibration cohort note reports the excluded account count. Legacy outcomes without provenance require a contemporaneous record or a recorded score equal to the latest pre-event snapshot; the mere presence of an older snapshot does not establish a valid prediction.
 
 ## Activation safety
 

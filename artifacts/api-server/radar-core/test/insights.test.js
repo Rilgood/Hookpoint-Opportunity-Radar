@@ -15,6 +15,13 @@ function setup() {
   return db;
 }
 
+function knownHistoricalScore(db, companyId, score, at) {
+  db.run(`INSERT INTO score_snapshots(id,tenant_id,company_id,score_version,opportunity_score,opportunity_tier,
+    fit_score,need_score,intent_score,timing_score,risk_score,active_signal_count,components_json,computed_at)
+    VALUES (?,?,?,'historical-fixture',?,'cold',0,0,0,0,0,0,'{}',?)`,
+  [`history-${companyId}-${at}`, config.defaultTenantId, companyId, score, at]);
+}
+
 function launch(db, name, domain, observedAt = new Date().toISOString(), source = 'news') {
   return ingestOne(db, config.defaultTenantId, {
     company: { name, domain, industry: 'Technology', employee_count: 40 },
@@ -72,6 +79,7 @@ test('analytics uses earliest labels, sample guardrails, priorities, and tenant 
   const db = setup();
   const first = launch(db, 'False Confidence', 'false.example');
   db.run(`UPDATE companies SET opportunity_score=80, opportunity_tier='hot' WHERE id=?`, [first.company.id]);
+  knownHistoricalScore(db, first.company.id, 80, new Date(Date.now() - 3 * 86_400_000).toISOString());
   recordOutcome(db, config.defaultTenantId, first.company.id, { outcome_type: 'lost', note: 'Budget was unavailable.', occurred_at: new Date(Date.now() - 2 * 86_400_000).toISOString() });
   recordOutcome(db, config.defaultTenantId, first.company.id, { outcome_type: 'meeting', occurred_at: new Date(Date.now() - 86_400_000).toISOString() });
   const second = launch(db, 'Hidden Win', 'hidden.example');
@@ -100,9 +108,11 @@ test('evidence observed after the earliest label never enters cohorts, source at
   const subject = launch(db, 'Subject Co', 'subject.example', daysAgo(3));
   // Peer A: signal seen 20 days ago, qualified 5 days ago -> legitimate comparable, 15 days signal->qualified.
   const peerA = launch(db, 'Peer A', 'peer-a.example', daysAgo(20));
+  knownHistoricalScore(db, peerA.company.id, peerA.company.opportunity_score, daysAgo(6));
   recordOutcome(db, tenant, peerA.company.id, { outcome_type: 'meeting', occurred_at: daysAgo(5) });
   // Peer B: qualified 30 days ago, signal only observed 2 days ago -> post-outcome evidence, must be excluded everywhere.
   const peerB = launch(db, 'Peer B', 'peer-b.example', daysAgo(2), 'late_source');
+  knownHistoricalScore(db, peerB.company.id, 20, daysAgo(31));
   recordOutcome(db, tenant, peerB.company.id, { outcome_type: 'won', occurred_at: daysAgo(30) });
 
   const comparable = companyInsights(db, tenant, subject.company.id, now.toISOString()).comparable_accounts;

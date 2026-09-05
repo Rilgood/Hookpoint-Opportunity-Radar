@@ -138,7 +138,7 @@ function addCalibrationData(db, tenantId) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [companyId, tenantId, companyId, companyId, `${companyId}.test`, 10, now, now]);
     db.run(`INSERT INTO score_snapshots(id, tenant_id, company_id, score_version, opportunity_score, opportunity_tier,
       fit_score, need_score, intent_score, timing_score, risk_score, active_signal_count, components_json, computed_at)
-      VALUES (?, ?, ?, 'rules-1.1', 0, 'cold', ?, ?, 0, 0, 0, 0, '{}', ?)`,
+      VALUES (?, ?, ?, 'rules-1.1', 10, 'cold', ?, ?, 0, 0, 0, 0, '{}', ?)`,
     [`snapshot-${companyId}`, tenantId, companyId, qualified ? 0 : 100, qualified ? 70 : 0, occurredAt]);
     db.run(`INSERT INTO outcomes(id, tenant_id, company_id, outcome_type, score_at_outcome, metadata_json, occurred_at, created_at)
       VALUES (?, ?, ?, ?, 10, '{}', ?, ?)`,
@@ -208,9 +208,10 @@ test('rejects a stale score approval after another administrator approves a newe
     assert.equal(original.status, 'proposed');
 
     const alternativeId = id('score_version');
+    const alternativeVersion = `${scoringConfig.version}-independent-review`;
     db.run(`INSERT INTO scoring_versions(id, tenant_id, version, status, base_version, config_json, evaluation_json, created_at, created_by)
-      VALUES (?, ?, 'rules-1.1-independent-review', 'proposed', 'rules-1.1', ?, '{}', ?, 'other-operator')`,
-    [alternativeId, tenantId, JSON.stringify({ ...original.config, version: 'rules-1.1-independent-review' }), now]);
+      VALUES (?, ?, ?, 'proposed', ?, ?, '{}', ?, 'other-operator')`,
+    [alternativeId, tenantId, alternativeVersion, scoringConfig.version, JSON.stringify({ ...original.config, version: alternativeVersion }), now]);
 
     const approved = await app.request(`/api/v1/analytics/outcomes/recommendations/${alternativeId}/approve`, {
       headers: { 'x-test-browser-user': tenantId },
@@ -816,7 +817,9 @@ test('connector runs record whether the scheduler or an operator started them', 
   const events = [];
   let stop;
   try {
-    await runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'Manual Co' } });
+    const manualRun = await runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'Manual Co' } });
+    // Distinct fixture times: two fast empty runs can otherwise start in the same millisecond.
+    db.run('UPDATE connector_runs SET started_at=? WHERE id=?', [new Date(Date.now() - 1000).toISOString(), manualRun.run_id]);
     setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Scheduled Co' } } });
     stop = startScheduler(db, 60_000, { onEvent: (event) => events.push(event) });
     await waitFor(() => events.some((event) => event.event === 'scheduled_connector_run'));
@@ -1211,6 +1214,7 @@ test('expires stale signals when their score refresh becomes due', () => {
     title: 'Launch announced', observed_at: new Date().toISOString(), attributes: { is_new: true }
   });
   db.run("UPDATE signals SET last_seen_at='2024-01-01T00:00:00.000Z', expires_at='2024-03-01T00:00:00.000Z' WHERE company_id=?", [result.company.id]);
+  db.run("UPDATE observations SET observed_at='2024-01-01T00:00:00.000Z' WHERE company_id=?", [result.company.id]);
   db.run("UPDATE companies SET next_refresh_at='2024-03-02T00:00:00.000Z' WHERE id=?", [result.company.id]);
   const rescored = rescoreDueCompanies(db, config.defaultTenantId, 10);
   assert.equal(rescored.length, 1);

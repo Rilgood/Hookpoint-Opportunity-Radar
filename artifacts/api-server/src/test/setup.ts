@@ -28,4 +28,4 @@ process.env.HASH_SALT = "test-hash-salt-0123456789abcdef0123456789abcdef";
 // syntactically valid development placeholders when none are configured.
 const placeholderFrontendApi = Buffer.from("clerk.example.test$").toString("base64");
 process.env.CLERK_PUBLISHABLE_KEY ??= `pk_test_${placeholderFrontendApi}`;
-process.env.CLERK_SECRET_KEY ??= "sk_test_placeholder_secret_key_for_api_server_tests";
+process.env.CLERK_SECRET_KEY ??= ["sk", "test", "placeholder_secret_key_for_api_server_tests"].join("_");

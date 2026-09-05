@@ -18,6 +18,9 @@
 
 set -eu
 
+# These tests use local Clerk placeholders and never need SDK telemetry.
+export CLERK_TELEMETRY_DISABLED=true
+
 api_server_dir="artifacts/api-server"
 
 if [ ! -f "$api_server_dir/package.json" ]; then

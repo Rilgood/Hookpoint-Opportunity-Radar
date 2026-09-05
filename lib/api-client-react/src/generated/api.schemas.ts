@@ -5,8 +5,41 @@
  * Typed application contract for the Hook Point Opportunity Radar.
  * OpenAPI spec version: 1.1.0
  */
-export interface HealthStatus {
-  status: string;
+export type WorkItemStatus = typeof WorkItemStatus[keyof typeof WorkItemStatus];
+
+
+export const WorkItemStatus = {
+  open: 'open',
+  done: 'done',
+  dismissed: 'dismissed',
+} as const;
+
+export interface WorkItem {
+  id: string;
+  company_id: string;
+  company_name: string;
+  company_status: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+  /** @nullable */
+  owner_name: string | null;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  due_at: string | null;
+  /** @nullable */
+  snoozed_until: string | null;
+  /** @nullable */
+  resolution_note: string | null;
+  /** @nullable */
+  completed_at: string | null;
+  /** @nullable */
+  suggested_next_action: string | null;
+  status: WorkItemStatus;
+  is_actionable: boolean;
 }
 
 export interface ResponseMeta {
@@ -14,16 +47,195 @@ export interface ResponseMeta {
   duration_ms: number;
 }
 
-export type OpportunityTier = typeof OpportunityTier[keyof typeof OpportunityTier];
+export interface WorkItemResponse {
+  data: WorkItem;
+  meta: ResponseMeta;
+}
+
+export interface CreateWorkItemInput {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  company_id: string;
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  title: string;
+  /**
+     * @maxLength 200
+     * @nullable
+     */
+  owner_name?: string | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  note?: string | null;
+  /** @nullable */
+  due_at?: string | null;
+}
+
+export type UpdateWorkItemInputStatus = typeof UpdateWorkItemInputStatus[keyof typeof UpdateWorkItemInputStatus];
 
 
-export const OpportunityTier = {
-  hot: 'hot',
-  warm: 'warm',
-  watch: 'watch',
-  cold: 'cold',
-  suppressed: 'suppressed',
+export const UpdateWorkItemInputStatus = {
+  open: 'open',
+  done: 'done',
+  dismissed: 'dismissed',
 } as const;
+
+export interface UpdateWorkItemInput {
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  title?: string;
+  /**
+     * @maxLength 200
+     * @nullable
+     */
+  owner_name?: string | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  note?: string | null;
+  /** @nullable */
+  due_at?: string | null;
+  status?: UpdateWorkItemInputStatus;
+  /** @nullable */
+  snoozed_until?: string | null;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  resolution_note?: string | null;
+}
+
+export type WorkItemListCounts = {
+  /** @minimum 0 */
+  all: number;
+  /** @minimum 0 */
+  open: number;
+  /** @minimum 0 */
+  today: number;
+  /** @minimum 0 */
+  due: number;
+  /** @minimum 0 */
+  overdue: number;
+  /** @minimum 0 */
+  upcoming: number;
+  /** @minimum 0 */
+  snoozed: number;
+  /** @minimum 0 */
+  completed: number;
+  /** @minimum 0 */
+  dismissed: number;
+};
+
+export interface WorkItemList {
+  data: WorkItem[];
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  limit: number;
+  /** @minimum 0 */
+  offset: number;
+  counts: WorkItemListCounts;
+  as_of: string;
+  time_zone: string;
+}
+
+export interface WorkItemListResponse {
+  data: WorkItemList;
+  meta: ResponseMeta;
+}
+
+export type EvidenceReviewStatus = typeof EvidenceReviewStatus[keyof typeof EvidenceReviewStatus];
+
+
+export const EvidenceReviewStatus = {
+  unreviewed: 'unreviewed',
+  verified: 'verified',
+  rejected: 'rejected',
+  needs_review: 'needs_review',
+} as const;
+
+export interface EvidenceReview {
+  observation_id: string;
+  status: EvidenceReviewStatus;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  reviewed_by: string | null;
+  /** @nullable */
+  reviewed_at: string | null;
+}
+
+export type EvidenceReviewEntryStatus = typeof EvidenceReviewEntryStatus[keyof typeof EvidenceReviewEntryStatus];
+
+
+export const EvidenceReviewEntryStatus = {
+  unreviewed: 'unreviewed',
+  verified: 'verified',
+  rejected: 'rejected',
+  needs_review: 'needs_review',
+} as const;
+
+export interface EvidenceReviewEntry {
+  observation_id: string;
+  status: EvidenceReviewEntryStatus;
+  /** @nullable */
+  note: string | null;
+  /** @nullable */
+  reviewed_by: string | null;
+  /** @nullable */
+  reviewed_at: string | null;
+  title: string;
+  source: string;
+  /** @nullable */
+  url: string | null;
+  observed_at: string;
+}
+
+export interface EvidenceReviewList {
+  data: EvidenceReviewEntry[];
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  limit: number;
+  /** @minimum 0 */
+  offset: number;
+}
+
+export interface EvidenceReviewListResponse {
+  data: EvidenceReviewList;
+  meta: ResponseMeta;
+}
+
+export type ReviewEvidenceInputStatus = typeof ReviewEvidenceInputStatus[keyof typeof ReviewEvidenceInputStatus];
+
+
+export const ReviewEvidenceInputStatus = {
+  verified: 'verified',
+  rejected: 'rejected',
+  needs_review: 'needs_review',
+} as const;
+
+/**
+ * Rejection and needs_review require a note. Rejection excludes this observation from current scoring and immediately rescores. Verification records human review without increasing confidence.
+ */
+export interface ReviewEvidenceInput {
+  observation_id: string;
+  status: ReviewEvidenceInputStatus;
+  /**
+     * @maxLength 2000
+     * @nullable
+     */
+  note?: string | null;
+}
 
 export type CompanyStatus = typeof CompanyStatus[keyof typeof CompanyStatus];
 
@@ -49,6 +261,17 @@ export const IdentityReviewStatus = {
   needs_review: 'needs_review',
   confirmed: 'confirmed',
   separated: 'separated',
+} as const;
+
+export type OpportunityTier = typeof OpportunityTier[keyof typeof OpportunityTier];
+
+
+export const OpportunityTier = {
+  hot: 'hot',
+  warm: 'warm',
+  watch: 'watch',
+  cold: 'cold',
+  suppressed: 'suppressed',
 } as const;
 
 export interface Company {
@@ -97,6 +320,127 @@ export interface Company {
   next_refresh_at?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface ReviewEvidenceResult {
+  review: EvidenceReview;
+  company: Company;
+}
+
+export interface ReviewEvidenceResponse {
+  data: ReviewEvidenceResult;
+  meta: ResponseMeta;
+}
+
+export type SourceReadinessRequirementsItem = {
+  name: string;
+  present: boolean;
+};
+
+export type SourceReadinessLatestRun = {
+  status: string;
+  /** @nullable */
+  finished_at: string | null;
+  /** @minimum 0 */
+  seen: number;
+  /** @minimum 0 */
+  inserted: number;
+  /** @minimum 0 */
+  rejected: number;
+} | null;
+
+export interface SourceReadiness {
+  key: string;
+  label: string;
+  purpose: string;
+  description: string;
+  inputs: string[];
+  implemented: boolean;
+  configured: boolean;
+  enabled: boolean;
+  mode: string;
+  cadence: string;
+  status: string;
+  requirements: SourceReadinessRequirementsItem[];
+  latest_run: SourceReadinessLatestRun;
+}
+
+export type WorkspaceReadinessRuntimeIssuesItem = {
+  code: string;
+  severity: string;
+  message: string;
+};
+
+export type WorkspaceReadinessRuntime = {
+  ready: boolean;
+  /** @minimum 0 */
+  schema_version: number;
+  storage_mode: string;
+  authenticated: boolean;
+  scheduler_enabled: boolean;
+  issues: WorkspaceReadinessRuntimeIssuesItem[];
+};
+
+export type WorkspaceReadinessCounts = {
+  /** @minimum 0 */
+  companies: number;
+  /** @minimum 0 */
+  observations: number;
+  /** @minimum 0 */
+  reviewed_evidence: number;
+  /** @minimum 0 */
+  assigned_work: number;
+  /** @minimum 0 */
+  work_items: number;
+  /** @minimum 0 */
+  completed_work: number;
+  /** @minimum 0 */
+  outcomes: number;
+  /** @minimum 0 */
+  pending_identity: number;
+};
+
+export type WorkspaceReadinessStepsItem = {
+  key: string;
+  title: string;
+  complete: boolean;
+  /** @minimum 0 */
+  value: number;
+  href: string;
+  detail: string;
+};
+
+export interface CalibrationSummary {
+  /** @minimum 0 */
+  labeled_accounts: number;
+  /** @minimum 0 */
+  qualified_accounts: number;
+  /** @minimum 0 */
+  negative_accounts: number;
+  minimum_sample: 30;
+  min_each_class: 10;
+  sufficient_sample: boolean;
+  cohort_note: string;
+  readonly recommendation: string;
+}
+
+export interface WorkspaceReadiness {
+  as_of: string;
+  mode: string;
+  runtime: WorkspaceReadinessRuntime;
+  counts: WorkspaceReadinessCounts;
+  sources: SourceReadiness[];
+  calibration: CalibrationSummary;
+  steps: WorkspaceReadinessStepsItem[];
+}
+
+export interface WorkspaceReadinessResponse {
+  data: WorkspaceReadiness;
+  meta: ResponseMeta;
+}
+
+export interface HealthStatus {
+  status: string;
 }
 
 export interface CompanyResponse {
@@ -225,7 +569,24 @@ export interface Signal {
   opportunity_tier: OpportunityTier;
 }
 
+export type ObservationReviewStatus = typeof ObservationReviewStatus[keyof typeof ObservationReviewStatus];
+
+
+export const ObservationReviewStatus = {
+  unreviewed: 'unreviewed',
+  verified: 'verified',
+  rejected: 'rejected',
+  needs_review: 'needs_review',
+} as const;
+
 export interface Observation {
+  review_status?: ObservationReviewStatus;
+  /** @nullable */
+  review_note?: string | null;
+  /** @nullable */
+  reviewed_by?: string | null;
+  /** @nullable */
+  reviewed_at?: string | null;
   id: string;
   source: string;
   type: string;
@@ -405,20 +766,6 @@ export interface CalibrationScoreBand {
   wilson_95_upper: number;
   /** @nullable */
   qualified_rate_lift_vs_cold: number | null;
-}
-
-export interface CalibrationSummary {
-  /** @minimum 0 */
-  labeled_accounts: number;
-  /** @minimum 0 */
-  qualified_accounts: number;
-  /** @minimum 0 */
-  negative_accounts: number;
-  minimum_sample: 30;
-  min_each_class: 10;
-  sufficient_sample: boolean;
-  cohort_note: string;
-  readonly recommendation: string;
 }
 
 export interface OutcomeCalibration {
@@ -602,6 +949,62 @@ export type ConnectorConfig = { [key: string]: unknown };
  * @nullable
  */
 export type ConnectorRunTrigger = typeof ConnectorRunTrigger[keyof typeof ConnectorRunTrigger] | null;
+
+
+export const ConnectorRunTrigger = {
+  scheduled: 'scheduled',
+  manual: 'manual',
+} as const;
+
+export interface ConnectorRunSummary {
+  id: string;
+  connector_key: string;
+  status: string;
+  trigger: ConnectorRunTrigger | null;
+  started_at: string;
+  /** @nullable */
+  finished_at?: string | null;
+  /** @nullable */
+  duration_ms?: number | null;
+  records_seen?: number;
+  records_inserted?: number;
+  records_rejected?: number;
+  signals_created?: number;
+  /** @nullable */
+  error_message?: string | null;
+}
+
+export type ConnectorScheduleState = typeof ConnectorScheduleState[keyof typeof ConnectorScheduleState];
+
+
+export const ConnectorScheduleState = {
+  push: 'push',
+  adapter_pending: 'adapter_pending',
+  needs_configuration: 'needs_configuration',
+  disabled: 'disabled',
+  running: 'running',
+  backoff: 'backoff',
+  input_rejected: 'input_rejected',
+  manual: 'manual',
+  due: 'due',
+  waiting: 'waiting',
+} as const;
+
+/**
+ * Why a connector's cadence will or will not run next. Derived by the server from the persisted connector state.
+ */
+export interface ConnectorSchedule {
+  state: ConnectorScheduleState;
+  reason: string;
+  /** True when the scheduler will pick the connector up without operator action. */
+  will_run: boolean;
+  /** @nullable */
+  next_run_at: string | null;
+  /** @nullable */
+  backoff_until: string | null;
+  consecutive_failures: number;
+}
+
 export interface Connector {
   connector_key: string;
   label: string;
@@ -629,6 +1032,17 @@ export interface Connector {
 }
 
 export type ConnectorRunMetadata = { [key: string]: unknown };
+
+export type ConnectorRun = ConnectorRunSummary & ({
+  metadata?: ConnectorRunMetadata;
+  cursor?: unknown | null;
+});
+
+export interface ConnectorRunsResponse {
+  data: ConnectorRun[];
+  meta: ResponseMeta;
+}
+
 export interface ConnectorsResponse {
   data: Connector[];
   meta: ResponseMeta;
@@ -1172,10 +1586,68 @@ export interface AnalyticsInsightsResponse {
   meta: ResponseMeta;
 }
 
+export type ListRadarWorkItemsParams = {
+view?: ListRadarWorkItemsView;
+company_id?: string;
+owner_name?: string;
+q?: string;
+time_zone?: string;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
+
+export type ListRadarWorkItemsView = typeof ListRadarWorkItemsView[keyof typeof ListRadarWorkItemsView];
+
+
+export const ListRadarWorkItemsView = {
+  all: 'all',
+  open: 'open',
+  today: 'today',
+  due: 'due',
+  overdue: 'overdue',
+  upcoming: 'upcoming',
+  snoozed: 'snoozed',
+  completed: 'completed',
+  done: 'done',
+  dismissed: 'dismissed',
+} as const;
+
+export type ListRadarEvidenceReviewsParams = {
+status?: ListRadarEvidenceReviewsStatus;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+/**
+ * @minimum 0
+ */
+offset?: number;
+};
+
+export type ListRadarEvidenceReviewsStatus = typeof ListRadarEvidenceReviewsStatus[keyof typeof ListRadarEvidenceReviewsStatus];
+
+
+export const ListRadarEvidenceReviewsStatus = {
+  all: 'all',
+  unreviewed: 'unreviewed',
+  verified: 'verified',
+  rejected: 'rejected',
+  needs_review: 'needs_review',
+} as const;
+
 export type ListRadarCompaniesParams = {
 tier?: OpportunityTier;
 q?: string;
 identity_review_status?: IdentityReviewStatus;
+status?: CompanyStatus;
 /**
  * @minimum 0
  * @maximum 100
@@ -1191,7 +1663,6 @@ page?: number;
  */
 limit?: number;
 };
-
 export type ListRadarSignalsParams = {
 status?: ListRadarSignalsStatus;
 category?: string;
@@ -1219,6 +1690,7 @@ connector_key?: string;
  */
 limit?: number;
 };
+
 export type ListRadarReviewQueueParams = {
 /**
  * @minimum 1
@@ -1226,67 +1698,3 @@ export type ListRadarReviewQueueParams = {
  */
 limit?: number;
 };
-
-
-export interface ConnectorRunSummary {
-  id: string;
-  connector_key: string;
-  status: string;
-  trigger: ConnectorRunTrigger | null;
-  started_at: string;
-  /** @nullable */
-  finished_at?: string | null;
-  /** @nullable */
-  duration_ms?: number | null;
-  records_seen?: number;
-  records_inserted?: number;
-  records_rejected?: number;
-  signals_created?: number;
-  /** @nullable */
-  error_message?: string | null;
-}
-
-export const ConnectorScheduleState = {
-  push: 'push',
-  adapter_pending: 'adapter_pending',
-  needs_configuration: 'needs_configuration',
-  disabled: 'disabled',
-  running: 'running',
-  backoff: 'backoff',
-  input_rejected: 'input_rejected',
-  manual: 'manual',
-  due: 'due',
-  waiting: 'waiting',
-} as const;
-
-export const ConnectorRunTrigger = {
-  scheduled: 'scheduled',
-  manual: 'manual',
-} as const;
-
-/**
- * Why a connector's cadence will or will not run next. Derived by the server from the persisted connector state.
- */
-export interface ConnectorSchedule {
-  state: ConnectorScheduleState;
-  reason: string;
-  /** True when the scheduler will pick the connector up without operator action. */
-  will_run: boolean;
-  /** @nullable */
-  next_run_at: string | null;
-  /** @nullable */
-  backoff_until: string | null;
-  consecutive_failures: number;
-}
-
-export interface ConnectorRunsResponse {
-  data: ConnectorRun[];
-  meta: ResponseMeta;
-}
-
-export type ConnectorScheduleState = typeof ConnectorScheduleState[keyof typeof ConnectorScheduleState];
-
-export type ConnectorRun = ConnectorRunSummary & ({
-  metadata?: ConnectorRunMetadata;
-  cursor?: unknown | null;
-});

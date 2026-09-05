@@ -9,6 +9,465 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Read source prerequisites and evidence-backed workspace setup progress
+ */
+export const getRadarWorkspaceReadinessResponseDataRuntimeSchemaVersionMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCountsCompaniesMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCountsObservationsMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCountsReviewedEvidenceMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCountsAssignedWorkMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCountsWorkItemsMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCountsCompletedWorkMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCountsOutcomesMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCountsPendingIdentityMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataSourcesItemLatestRunOneSeenMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataSourcesItemLatestRunOneInsertedMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataSourcesItemLatestRunOneRejectedMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCalibrationLabeledAccountsMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCalibrationQualifiedAccountsMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataCalibrationNegativeAccountsMin = 0;
+
+export const getRadarWorkspaceReadinessResponseDataStepsItemValueMin = 0;
+
+
+
+export const GetRadarWorkspaceReadinessResponse = zod.object({
+  "data": zod.object({
+  "as_of": zod.string(),
+  "mode": zod.string(),
+  "runtime": zod.object({
+  "ready": zod.boolean(),
+  "schema_version": zod.number().int().min(getRadarWorkspaceReadinessResponseDataRuntimeSchemaVersionMin),
+  "storage_mode": zod.string(),
+  "authenticated": zod.boolean(),
+  "scheduler_enabled": zod.boolean(),
+  "issues": zod.array(zod.object({
+  "code": zod.string(),
+  "severity": zod.string(),
+  "message": zod.string()
+}))
+}),
+  "counts": zod.object({
+  "companies": zod.number().int().min(getRadarWorkspaceReadinessResponseDataCountsCompaniesMin),
+  "observations": zod.number().int().min(getRadarWorkspaceReadinessResponseDataCountsObservationsMin),
+  "reviewed_evidence": zod.number().int().min(getRadarWorkspaceReadinessResponseDataCountsReviewedEvidenceMin),
+  "assigned_work": zod.number().int().min(getRadarWorkspaceReadinessResponseDataCountsAssignedWorkMin),
+  "work_items": zod.number().int().min(getRadarWorkspaceReadinessResponseDataCountsWorkItemsMin),
+  "completed_work": zod.number().int().min(getRadarWorkspaceReadinessResponseDataCountsCompletedWorkMin),
+  "outcomes": zod.number().int().min(getRadarWorkspaceReadinessResponseDataCountsOutcomesMin),
+  "pending_identity": zod.number().int().min(getRadarWorkspaceReadinessResponseDataCountsPendingIdentityMin)
+}),
+  "sources": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "purpose": zod.string(),
+  "description": zod.string(),
+  "inputs": zod.array(zod.string()),
+  "implemented": zod.boolean(),
+  "configured": zod.boolean(),
+  "enabled": zod.boolean(),
+  "mode": zod.string(),
+  "cadence": zod.string(),
+  "status": zod.string(),
+  "requirements": zod.array(zod.object({
+  "name": zod.string(),
+  "present": zod.boolean()
+})),
+  "latest_run": zod.union([zod.object({
+  "status": zod.string(),
+  "finished_at": zod.string().nullable(),
+  "seen": zod.number().int().min(getRadarWorkspaceReadinessResponseDataSourcesItemLatestRunOneSeenMin),
+  "inserted": zod.number().int().min(getRadarWorkspaceReadinessResponseDataSourcesItemLatestRunOneInsertedMin),
+  "rejected": zod.number().int().min(getRadarWorkspaceReadinessResponseDataSourcesItemLatestRunOneRejectedMin)
+}),zod.null()])
+})),
+  "calibration": zod.object({
+  "labeled_accounts": zod.number().min(getRadarWorkspaceReadinessResponseDataCalibrationLabeledAccountsMin),
+  "qualified_accounts": zod.number().min(getRadarWorkspaceReadinessResponseDataCalibrationQualifiedAccountsMin),
+  "negative_accounts": zod.number().min(getRadarWorkspaceReadinessResponseDataCalibrationNegativeAccountsMin),
+  "minimum_sample": zod.literal(30),
+  "min_each_class": zod.literal(10),
+  "sufficient_sample": zod.boolean(),
+  "cohort_note": zod.string(),
+  "recommendation": zod.string()
+}),
+  "steps": zod.array(zod.object({
+  "key": zod.string(),
+  "title": zod.string(),
+  "complete": zod.boolean(),
+  "value": zod.number().int().min(getRadarWorkspaceReadinessResponseDataStepsItemValueMin),
+  "href": zod.string(),
+  "detail": zod.string()
+}))
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+/**
+ * @summary List saved work and authoritative filtered counts
+ */
+export const listRadarWorkItemsQueryLimitMax = 200;
+
+export const listRadarWorkItemsQueryOffsetMin = 0;
+
+
+
+export const ListRadarWorkItemsQueryParams = zod.object({
+  "view": zod.enum(['all', 'open', 'today', 'due', 'overdue', 'upcoming', 'snoozed', 'completed', 'done', 'dismissed']).optional(),
+  "company_id": zod.coerce.string().optional(),
+  "owner_name": zod.coerce.string().optional(),
+  "q": zod.coerce.string().optional(),
+  "time_zone": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().int().min(1).max(listRadarWorkItemsQueryLimitMax).optional(),
+  "offset": zod.coerce.number().int().min(listRadarWorkItemsQueryOffsetMin).optional()
+})
+
+export const listRadarWorkItemsResponseDataTotalMin = 0;
+
+export const listRadarWorkItemsResponseDataLimitMin = 0;
+
+export const listRadarWorkItemsResponseDataOffsetMin = 0;
+
+export const listRadarWorkItemsResponseDataCountsAllMin = 0;
+
+export const listRadarWorkItemsResponseDataCountsOpenMin = 0;
+
+export const listRadarWorkItemsResponseDataCountsTodayMin = 0;
+
+export const listRadarWorkItemsResponseDataCountsDueMin = 0;
+
+export const listRadarWorkItemsResponseDataCountsOverdueMin = 0;
+
+export const listRadarWorkItemsResponseDataCountsUpcomingMin = 0;
+
+export const listRadarWorkItemsResponseDataCountsSnoozedMin = 0;
+
+export const listRadarWorkItemsResponseDataCountsCompletedMin = 0;
+
+export const listRadarWorkItemsResponseDataCountsDismissedMin = 0;
+
+
+
+export const ListRadarWorkItemsResponse = zod.object({
+  "data": zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "company_status": zod.string(),
+  "title": zod.string(),
+  "created_at": zod.string(),
+  "updated_at": zod.string(),
+  "created_by": zod.string(),
+  "updated_by": zod.string(),
+  "owner_name": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "due_at": zod.string().nullable(),
+  "snoozed_until": zod.string().nullable(),
+  "resolution_note": zod.string().nullable(),
+  "completed_at": zod.string().nullable(),
+  "suggested_next_action": zod.string().nullable(),
+  "status": zod.enum(['open', 'done', 'dismissed']),
+  "is_actionable": zod.boolean()
+})),
+  "total": zod.number().int().min(listRadarWorkItemsResponseDataTotalMin),
+  "limit": zod.number().int().min(listRadarWorkItemsResponseDataLimitMin),
+  "offset": zod.number().int().min(listRadarWorkItemsResponseDataOffsetMin),
+  "counts": zod.object({
+  "all": zod.number().int().min(listRadarWorkItemsResponseDataCountsAllMin),
+  "open": zod.number().int().min(listRadarWorkItemsResponseDataCountsOpenMin),
+  "today": zod.number().int().min(listRadarWorkItemsResponseDataCountsTodayMin),
+  "due": zod.number().int().min(listRadarWorkItemsResponseDataCountsDueMin),
+  "overdue": zod.number().int().min(listRadarWorkItemsResponseDataCountsOverdueMin),
+  "upcoming": zod.number().int().min(listRadarWorkItemsResponseDataCountsUpcomingMin),
+  "snoozed": zod.number().int().min(listRadarWorkItemsResponseDataCountsSnoozedMin),
+  "completed": zod.number().int().min(listRadarWorkItemsResponseDataCountsCompletedMin),
+  "dismissed": zod.number().int().min(listRadarWorkItemsResponseDataCountsDismissedMin)
+}),
+  "as_of": zod.string(),
+  "time_zone": zod.string()
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * @summary Save an accountable next action
+ */
+export const createRadarWorkItemBodyCompanyIdMax = 200;
+
+export const createRadarWorkItemBodyTitleMax = 240;
+
+export const createRadarWorkItemBodyOwnerNameMax = 200;
+
+export const createRadarWorkItemBodyNoteMax = 2000;
+
+
+
+export const CreateRadarWorkItemBody = zod.object({
+  "company_id": zod.string().min(1).max(createRadarWorkItemBodyCompanyIdMax),
+  "title": zod.string().min(1).max(createRadarWorkItemBodyTitleMax),
+  "owner_name": zod.string().max(createRadarWorkItemBodyOwnerNameMax).nullish(),
+  "note": zod.string().max(createRadarWorkItemBodyNoteMax).nullish(),
+  "due_at": zod.string().nullish()
+})
+
+export const CreateRadarWorkItemResponse = zod.object({
+  "data": zod.object({
+  "id": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "company_status": zod.string(),
+  "title": zod.string(),
+  "created_at": zod.string(),
+  "updated_at": zod.string(),
+  "created_by": zod.string(),
+  "updated_by": zod.string(),
+  "owner_name": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "due_at": zod.string().nullable(),
+  "snoozed_until": zod.string().nullable(),
+  "resolution_note": zod.string().nullable(),
+  "completed_at": zod.string().nullable(),
+  "suggested_next_action": zod.string().nullable(),
+  "status": zod.enum(['open', 'done', 'dismissed']),
+  "is_actionable": zod.boolean()
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * @summary Get a saved work item
+ */
+export const GetRadarWorkItemParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetRadarWorkItemResponse = zod.object({
+  "data": zod.object({
+  "id": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "company_status": zod.string(),
+  "title": zod.string(),
+  "created_at": zod.string(),
+  "updated_at": zod.string(),
+  "created_by": zod.string(),
+  "updated_by": zod.string(),
+  "owner_name": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "due_at": zod.string().nullable(),
+  "snoozed_until": zod.string().nullable(),
+  "resolution_note": zod.string().nullable(),
+  "completed_at": zod.string().nullable(),
+  "suggested_next_action": zod.string().nullable(),
+  "status": zod.enum(['open', 'done', 'dismissed']),
+  "is_actionable": zod.boolean()
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * @summary Complete, snooze, reschedule, dismiss or reopen saved work
+ */
+export const UpdateRadarWorkItemParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateRadarWorkItemBodyTitleMax = 240;
+
+export const updateRadarWorkItemBodyOwnerNameMax = 200;
+
+export const updateRadarWorkItemBodyNoteMax = 2000;
+
+export const updateRadarWorkItemBodyResolutionNoteMax = 2000;
+
+
+
+export const UpdateRadarWorkItemBody = zod.object({
+  "title": zod.string().min(1).max(updateRadarWorkItemBodyTitleMax).optional(),
+  "owner_name": zod.string().max(updateRadarWorkItemBodyOwnerNameMax).nullish(),
+  "note": zod.string().max(updateRadarWorkItemBodyNoteMax).nullish(),
+  "due_at": zod.string().nullish(),
+  "status": zod.enum(['open', 'done', 'dismissed']).optional(),
+  "snoozed_until": zod.string().nullish(),
+  "resolution_note": zod.string().max(updateRadarWorkItemBodyResolutionNoteMax).nullish()
+})
+
+export const UpdateRadarWorkItemResponse = zod.object({
+  "data": zod.object({
+  "id": zod.string(),
+  "company_id": zod.string(),
+  "company_name": zod.string(),
+  "company_status": zod.string(),
+  "title": zod.string(),
+  "created_at": zod.string(),
+  "updated_at": zod.string(),
+  "created_by": zod.string(),
+  "updated_by": zod.string(),
+  "owner_name": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "due_at": zod.string().nullable(),
+  "snoozed_until": zod.string().nullable(),
+  "resolution_note": zod.string().nullable(),
+  "completed_at": zod.string().nullable(),
+  "suggested_next_action": zod.string().nullable(),
+  "status": zod.enum(['open', 'done', 'dismissed']),
+  "is_actionable": zod.boolean()
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * @summary List source observations and their review decisions
+ */
+export const ListRadarEvidenceReviewsParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const listRadarEvidenceReviewsQueryLimitMax = 200;
+
+export const listRadarEvidenceReviewsQueryOffsetMin = 0;
+
+
+
+export const ListRadarEvidenceReviewsQueryParams = zod.object({
+  "status": zod.enum(['all', 'unreviewed', 'verified', 'rejected', 'needs_review']).optional(),
+  "limit": zod.coerce.number().int().min(1).max(listRadarEvidenceReviewsQueryLimitMax).optional(),
+  "offset": zod.coerce.number().int().min(listRadarEvidenceReviewsQueryOffsetMin).optional()
+})
+
+export const listRadarEvidenceReviewsResponseDataTotalMin = 0;
+
+export const listRadarEvidenceReviewsResponseDataLimitMin = 0;
+
+export const listRadarEvidenceReviewsResponseDataOffsetMin = 0;
+
+
+
+export const ListRadarEvidenceReviewsResponse = zod.object({
+  "data": zod.object({
+  "data": zod.array(zod.object({
+  "observation_id": zod.string(),
+  "status": zod.enum(['unreviewed', 'verified', 'rejected', 'needs_review']),
+  "note": zod.string().nullable(),
+  "reviewed_by": zod.string().nullable(),
+  "reviewed_at": zod.string().nullable(),
+  "title": zod.string(),
+  "source": zod.string(),
+  "url": zod.string().nullable(),
+  "observed_at": zod.string()
+})),
+  "total": zod.number().int().min(listRadarEvidenceReviewsResponseDataTotalMin),
+  "limit": zod.number().int().min(listRadarEvidenceReviewsResponseDataLimitMin),
+  "offset": zod.number().int().min(listRadarEvidenceReviewsResponseDataOffsetMin)
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
+ * @summary Review evidence and refresh the company score
+ */
+export const ReviewRadarEvidenceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const reviewRadarEvidenceBodyNoteMax = 2000;
+
+
+
+export const ReviewRadarEvidenceBody = zod.object({
+  "observation_id": zod.string(),
+  "status": zod.enum(['verified', 'rejected', 'needs_review']),
+  "note": zod.string().max(reviewRadarEvidenceBodyNoteMax).nullish()
+}).describe('Rejection and needs_review require a note. Rejection excludes this observation from current scoring and immediately rescores. Verification records human review without increasing confidence.')
+
+export const ReviewRadarEvidenceResponse = zod.object({
+  "data": zod.object({
+  "review": zod.object({
+  "observation_id": zod.string(),
+  "status": zod.enum(['unreviewed', 'verified', 'rejected', 'needs_review']),
+  "note": zod.string().nullable(),
+  "reviewed_by": zod.string().nullable(),
+  "reviewed_at": zod.string().nullable()
+}),
+  "company": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "domain": zod.string().nullish(),
+  "website_url": zod.string().nullish(),
+  "linkedin_url": zod.string().nullish(),
+  "industry": zod.string(),
+  "subindustry": zod.string().nullish(),
+  "employee_count": zod.number().nullish(),
+  "size_band": zod.string().nullish(),
+  "annual_revenue": zod.number().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "status": zod.enum(['prospect', 'accepted', 'rejected', 'contacted', 'replied', 'meeting', 'opportunity', 'customer', 'lost', 'disqualified']),
+  "monitoring_tier": zod.string(),
+  "identity_confidence": zod.number(),
+  "identity_method": zod.string(),
+  "identity_review_status": zod.enum(['unreviewed', 'needs_review', 'confirmed', 'separated']),
+  "fit_score": zod.number(),
+  "need_score": zod.number(),
+  "intent_score": zod.number(),
+  "timing_score": zod.number(),
+  "risk_score": zod.number(),
+  "opportunity_score": zod.number(),
+  "opportunity_tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']),
+  "owner_name": zod.string().nullish(),
+  "crm_id": zod.string().nullish(),
+  "last_observed_at": zod.coerce.date().nullish(),
+  "next_refresh_at": zod.coerce.date().nullish(),
+  "created_at": zod.coerce.date().optional(),
+  "updated_at": zod.coerce.date().optional()
+})
+}),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -60,10 +519,12 @@ export const listRadarCompaniesQueryMinScoreMax = 100;
 export const listRadarCompaniesQueryLimitMax = 200;
 
 
+
 export const ListRadarCompaniesQueryParams = zod.object({
   "tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']).optional(),
   "q": zod.coerce.string().optional(),
   "identity_review_status": zod.enum(['unreviewed', 'needs_review', 'confirmed', 'separated']).optional(),
+  "status": zod.enum(['prospect', 'accepted', 'rejected', 'contacted', 'replied', 'meeting', 'opportunity', 'customer', 'lost', 'disqualified']).optional(),
   "min_score": zod.coerce.number().min(listRadarCompaniesQueryMinScoreMin).max(listRadarCompaniesQueryMinScoreMax).optional(),
   "page": zod.coerce.number().min(1).optional(),
   "limit": zod.coerce.number().min(1).max(listRadarCompaniesQueryLimitMax).optional()
@@ -181,6 +642,10 @@ export const GetRadarCompanyResponse = zod.object({
   "opportunity_tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed'])
 })),
   "observations": zod.array(zod.object({
+  "review_status": zod.enum(['unreviewed', 'verified', 'rejected', 'needs_review']).optional(),
+  "review_note": zod.string().nullish(),
+  "reviewed_by": zod.string().nullish(),
+  "reviewed_at": zod.string().nullish(),
   "id": zod.string(),
   "source": zod.string(),
   "type": zod.string(),
@@ -263,6 +728,7 @@ export const GetRadarCompanyInsightsParams = zod.object({
 
 export const getRadarCompanyInsightsResponseDataWhyNowDriversItemShareOfPositiveContributionMin = 0;
 export const getRadarCompanyInsightsResponseDataWhyNowDriversItemShareOfPositiveContributionMax = 100;
+
 
 
 export const GetRadarCompanyInsightsResponse = zod.object({
@@ -465,6 +931,8 @@ export const SeparateRadarCompanyIdentityParams = zod.object({
 })
 
 
+
+
 export const SeparateRadarCompanyIdentityBody = zod.object({
   "name": zod.string(),
   "alias_ids": zod.array(zod.string()).min(1),
@@ -504,6 +972,7 @@ export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsItemNegati
 
 export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMin = 4;
 export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMax = 4;
+
 
 
 export const GetRadarOutcomeAnalyticsResponse = zod.object({
@@ -828,6 +1297,7 @@ export const ingestRadarObservationsBodyRecordsItemConfidenceMax = 1;
 export const ingestRadarObservationsBodyRecordsMax = 5000;
 
 
+
 export const IngestRadarObservationsBody = zod.object({
   "records": zod.array(zod.object({
   "source": zod.string(),
@@ -870,6 +1340,7 @@ export const IngestRadarObservationsResponse = zod.object({
  * @summary List inferred opportunity signals
  */
 export const listRadarSignalsQueryLimitMax = 200;
+
 
 
 export const ListRadarSignalsQueryParams = zod.object({
@@ -960,11 +1431,45 @@ export const ListRadarConnectorsResponse = zod.object({
 })
 })
 
+
 /**
  * Each run records whether the scheduler or an operator started it, so scheduled and manual runs can be told apart.
  * @summary Recent connector runs, newest first (administrator only)
  */
 export const listRadarConnectorRunsQueryLimitMax = 200;
+
+
+
+export const ListRadarConnectorRunsQueryParams = zod.object({
+  "connector_key": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().min(1).max(listRadarConnectorRunsQueryLimitMax).optional()
+})
+
+export const ListRadarConnectorRunsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.string(),
+  "connector_key": zod.string(),
+  "status": zod.string(),
+  "trigger": zod.union([zod.literal('scheduled'),zod.literal('manual'),zod.literal(null)]).nullable().describe('Who started the run. Null for runs recorded before the trigger was tracked.'),
+  "started_at": zod.coerce.date(),
+  "finished_at": zod.coerce.date().nullish(),
+  "duration_ms": zod.number().nullish(),
+  "records_seen": zod.number().optional(),
+  "records_inserted": zod.number().optional(),
+  "records_rejected": zod.number().optional(),
+  "signals_created": zod.number().optional(),
+  "error_message": zod.string().nullish()
+}).and(zod.object({
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "cursor": zod.unknown().nullish()
+}))),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})
+
+
 /**
  * @summary Enable or disable a configured connector
  */
@@ -1078,6 +1583,7 @@ export const runRadarConnectorBodyToMax = 10;
 export const runRadarConnectorBodyLimitMax = 100;
 
 
+
 export const RunRadarConnectorBody = zod.object({
   "company": zod.object({
   "name": zod.string().max(runRadarConnectorBodyCompanyNameMax).optional(),
@@ -1107,6 +1613,7 @@ export const RunRadarConnectorBody = zod.object({
 export const runRadarConnectorResponseDataErrorsItemIndexMin = 0;
 
 export const runRadarConnectorResponseDataErrorsMax = 100;
+
 
 
 export const RunRadarConnectorResponse = zod.object({
@@ -1188,6 +1695,7 @@ export const GetRadarDataQualityResponse = zod.object({
 export const listRadarReviewQueueQueryLimitMax = 200;
 
 
+
 export const ListRadarReviewQueueQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listRadarReviewQueueQueryLimitMax).optional()
 })
@@ -1206,36 +1714,6 @@ export const ListRadarReviewQueueResponse = zod.object({
   "opportunity_tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']),
   "last_observed_at": zod.string().nullish()
 })),
-  "meta": zod.object({
-  "request_id": zod.string(),
-  "duration_ms": zod.number()
-})
-})
-
-
-export const ListRadarConnectorRunsQueryParams = zod.object({
-  "connector_key": zod.coerce.string().optional(),
-  "limit": zod.coerce.number().min(1).max(listRadarConnectorRunsQueryLimitMax).optional()
-})
-
-export const ListRadarConnectorRunsResponse = zod.object({
-  "data": zod.array(zod.object({
-  "id": zod.string(),
-  "connector_key": zod.string(),
-  "status": zod.string(),
-  "trigger": zod.union([zod.literal('scheduled'),zod.literal('manual'),zod.literal(null)]).nullable().describe('Who started the run. Null for runs recorded before the trigger was tracked.'),
-  "started_at": zod.coerce.date(),
-  "finished_at": zod.coerce.date().nullish(),
-  "duration_ms": zod.number().nullish(),
-  "records_seen": zod.number().optional(),
-  "records_inserted": zod.number().optional(),
-  "records_rejected": zod.number().optional(),
-  "signals_created": zod.number().optional(),
-  "error_message": zod.string().nullish()
-}).and(zod.object({
-  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
-  "cursor": zod.unknown().nullish()
-}))),
   "meta": zod.object({
   "request_id": zod.string(),
   "duration_ms": zod.number()

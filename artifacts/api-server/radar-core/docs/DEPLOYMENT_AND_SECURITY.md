@@ -23,12 +23,12 @@ Schema changes reach production through the publish flow, never through the runn
 
 ## Configuration
 
-All settings are environment variables read in `radar-core/src/config.js`. There is no `.env.example`; in the Replit workspace set them as workspace secrets or environment variables (the core will also read a `.env` file next to its resolved root if one exists, but the project does not ship or commit one).
+Core settings are environment variables read in `radar-core/src/config.js`; Clerk and browser build settings are also read by the host and frontend. The root [.env.production.example](../../../../.env.production.example) lists the deployment fields without credentials. Set them through the deployment's secret manager. The core also reads a `.env` file next to its resolved root if one exists, except in explicit isolated local development. Never commit actual environment files. The [production preparation guide](../../../../PRODUCTION_READINESS.md) provides a credentials-free code rehearsal and a preflight that checks configuration without printing its values.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `NODE_ENV` | `development` | `production` enables the production gate below |
-| `PORT` / `HOST` | required by the host (no default) / `0.0.0.0` | Listening address. The host, not the core, binds the port and exits immediately if `PORT` is unset; the workflows and the production run config set `8080` |
+| `PORT` / `HOST` | required by the host (no default) / `0.0.0.0` | The Express host requires `PORT` and uses its default listening interfaces; its entry point does not use `HOST`. The standalone core honors `HOST`. The production run config sets `PORT=8080` |
 | `AUTH_REQUIRED` | `true` in production, else `false` | Core-level switch. Through the host it only affects API-key handling: the host already answers `401` on `/api/v1` without a Clerk session or `X-API-Key`, so unauthenticated access to `DEFAULT_TENANT_ID` exists only when running the standalone `src/server.js` entry point |
 | `DEFAULT_TENANT_ID` | `tenant_hookpoint` | Tenant that owns the bootstrap `ADMIN_API_KEY` |
 | `ADMIN_API_KEY` | unset | Bootstrap API key for direct integrations; 32+ characters. The key record is only created when `HASH_SALT` is also 32+ characters |
@@ -40,7 +40,7 @@ All settings are environment variables read in `radar-core/src/config.js`. There
 | `DB_STATEMENT_TIMEOUT_MS` | `30000` | Per-statement timeout applied to the Postgres session |
 | `DATABASE_PATH` | `./data/hookpoint-radar.sqlite` relative to the core's resolved root | SQLite fallback when `DATABASE_URL` is unset: a file, or `:memory:` |
 | `RADAR_CONFIG_DIR` | `config/` next to the core's `src/`; the host sets it to `radar-core/config` | Directory holding `scoring.json`, `signal-catalog.json` and `connector-catalog.json`. Startup fails if any of the three is missing |
-| `ALLOW_EPHEMERAL_STORAGE` | `false` in production | SQLite only: permits `:memory:`/`/tmp` storage in production; never for live data |
+| `ALLOW_EPHEMERAL_STORAGE` | `false` in production | SQLite only: permits memory or system temporary-directory storage in production; only for disposable rehearsals, never live data |
 | `DURABLE_STORAGE_CONFIRMED` | `false` in production | SQLite only: operator assertion that `DATABASE_PATH` is on backed-up durable storage. Not needed with Postgres |
 | `SCHEDULER_ENABLED`, `SCHEDULER_INTERVAL_MS` | `true`, `60000` | The host starts the in-process scheduler on boot (skipped, with an error log, while readiness reports `schema_out_of_date`) and stops it on shutdown. Each tick runs due enabled pull connectors with their stored `schedule_input` and refreshes a `RESCORE_BATCH_SIZE` batch of due company scores. Minimum interval 5000 ms; `false` disables it (logged as a warning) and leaves only the manual `run`/`rescore` endpoints |
 | `TRUST_PROXY` | `false` | Use `X-Forwarded-For` for rate limiting; set `true` behind a trusted reverse proxy such as the Replit deployment proxy |
@@ -62,7 +62,7 @@ With `NODE_ENV=production` the core evaluates `runtimeIssues()` on every non-pub
 - `weak_hash_salt`, `weak_admin_api_key`, `weak_webhook_secret` – each secret must be an independent value of at least 32 characters.
 - `no_active_api_key` – an `ADMIN_API_KEY` or provisioned key must exist. This and `weak_hash_salt` block API-key clients only; Clerk-authenticated console requests are still served.
 - `schema_out_of_date` – the Postgres schema lacks tables or columns the code expects. Production runs no DDL; migrate the development database and publish again.
-- `ephemeral_storage` – SQLite fallback on `:memory:` or `/tmp` in production without `ALLOW_EPHEMERAL_STORAGE=true`.
+- `ephemeral_storage` – SQLite fallback in memory or a system temporary directory (including macOS and Windows temporary paths) in production without `ALLOW_EPHEMERAL_STORAGE=true`.
 - `durability_unconfirmed` – SQLite fallback on any other path in production without `DURABLE_STORAGE_CONFIRMED=true`.
 - `invalid_numeric_configuration` – a bound is outside its supported range.
 
@@ -76,16 +76,6 @@ For a production topology:
 4. Add shared rate limiting for cross-instance enforcement.
 5. Configure production secrets and explicit `ALLOWED_ORIGINS`.
 6. Verify `/api/ready`, tenant isolation and a dated backup/restore drill before adding connector credentials.
-
-### Scheduler and autoscale
-
-The host runs the core's scheduler in-process (`artifacts/api-server/src/index.ts`), so connector cadences enabled through `PATCH /api/v1/connectors/:key` and time-decay rescoring happen without an operator. Every instance runs it, and the shared database decides who does the work:
-
-- **It only ticks while an instance is running.** Autoscale scales to zero when idle, so an hourly cadence fires on the first tick after the next request wakes the service, not at the top of the hour. Any request (including an external uptime ping) is enough to wake it; the startup tick runs immediately.
-- **Due connectors are claimed in the database, so several instances are safe.** Before a run starts (scheduled or manual `POST /api/v1/connectors/:key/run`, on any instance) the connector row is claimed with one conditional `UPDATE` that stamps `lease_owner` (instance), `lease_token` (run id) and `lease_expires_at`, and for scheduled runs also re-checks that the connector is still enabled, due and out of backoff. Exactly one caller wins; the others see the connector as no longer due (`connector_not_due`, logged at debug level as `scheduler: connector_claimed_elsewhere`) or as `409 connector_already_running`. The holder renews the lease every `CONNECTOR_LEASE_MS / 3` while the provider call is in flight, renews and re-checks it every 25 records while ingesting the results, and requires an unexpired lease when closing the run (a run that finds its lease gone, or already expired, does not record a result: it stays `abandoned`, answers `409 connector_lease_lost` and the host logs `scheduler: connector_lease_lost`; records already ingested are deduplicated by the next run) and clears it when the run finishes. There is no need to cap the deployment at one instance or to run a separate worker for the scheduler.
-- **Abandoned runs are recovered after a bounded timeout.** A lease that reaches `CONNECTOR_LEASE_MS` (default 300000 ms, five minutes) without being renewed belonged to an instance that crashed, hung or was killed mid-run. On its next tick (and at boot) any instance marks that run `abandoned` in `connector_runs`, sets the connector to `error` with the same exponential backoff as an operational failure, clears the lease and logs `scheduler: connector_run_abandoned` (warn) with the run id and the owning instance. A lease that is still live is never touched by other instances. On `SIGTERM` the host waits for the in-flight run (up to `CONNECTOR_TIMEOUT_MS` plus a margin) before exiting; if the platform kills the process sooner, the run is recovered as abandoned by the next tick anywhere.
-
-The scheduler does not start while `/api/ready` reports `schema_out_of_date`; migrate and republish, then restart. Scheduler outcomes are visible in `/api/v1/connectors/runs` and in the host logs as `scheduler: scheduled_connector_run`, `scheduler: connector_run_failed`, `scheduler: connector_run_abandoned` and `scheduler: scheduled_rescore_failed` events. A scheduled run whose stored `schedule_input` is rejected by the adapter (a 4xx-class failure) is deferred to the next cadence slot rather than retried every tick; provider/network failures use the connector's exponential backoff.
 
 ### Scheduler and autoscale
 
@@ -147,7 +137,7 @@ The signed bytes are exactly `<timestamp>.<source>.<raw request body>`, where `s
 
 ## Backup and recovery
 
-Production data is in the Replit-managed Postgres database, inside the `radar` schema, so one schema-level dump captures tenant, observation, evidence, scoring, outcome and audit tables together. Two recovery paths exist; both have been rehearsed with the procedure below and must be rehearsed again at least monthly and before every migration to a new database.
+The checked-in Replit topology stores production data in managed Postgres, inside the `radar` schema, so one schema-level dump captures tenant, observation, evidence, scoring, outcome and audit tables together. The two recovery procedures below require verification with the actual connected deployment. The inherited drill log records an earlier schema; it does not establish that the current release or a new deployment has passed a restore. Rehearse again at least monthly and before migrating to a new database.
 
 ### Recovery objectives
 
@@ -189,6 +179,8 @@ Set `TRUST_PROXY=true` only when the service is behind a trusted proxy that over
 
 
 ### Drill log
+
+The entry below is an inherited historical record, not a result from the current local verification. Add a current-schema result after connecting an approved database and scratch target.
 
 | Date | Source | Target | Result | Duration | Notes |
 |---|---|---|---|---|---|

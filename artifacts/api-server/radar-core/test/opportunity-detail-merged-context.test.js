@@ -28,6 +28,12 @@ test('opportunity detail renders active and retained merged-account recommendati
   const React = require(resolve(webAppRoot, 'node_modules/react'));
   const { renderToStaticMarkup } = require(resolve(webAppRoot, 'node_modules/react-dom/server'));
   const { RecommendationPanels } = createRequire(pathToFileURL(outputFile))(outputFile);
+  const mergedAt = '2026-08-28T00:00:00.000Z';
+  // Merge timestamps represent instants. The console intentionally displays
+  // their calendar date in the viewer's timezone, which can be the prior day.
+  const expectedMergeDate = new Intl.DateTimeFormat('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric'
+  }).format(new Date(mergedAt));
   const html = renderToStaticMarkup(React.createElement(RecommendationPanels, {
     recommendation: {
       offer: 'Active account offer',
@@ -43,7 +49,7 @@ test('opportunity detail renders active and retained merged-account recommendati
     mergedRecommendationContexts: [{
       source_company_id: 'source-account',
       source_name: 'Former Source Account',
-      merged_at: '2026-08-28T00:00:00.000Z',
+      merged_at: mergedAt,
       offer: 'Former account offer',
       headline: 'Former account headline',
       rationale: 'Historical rationale that reviewers need to retain.',
@@ -60,7 +66,7 @@ test('opportunity detail renders active and retained merged-account recommendati
   assert.match(html, /Active account offer/);
   assert.match(html, /Retained merged-account context/);
   assert.match(html, /Former Source Account/);
-  assert.match(html, /Merged Aug 28, 2026/);
+  assert.ok(html.includes(`Merged ${expectedMergeDate}`), `merge date should be ${expectedMergeDate} in the viewer's timezone`);
   assert.match(html, /Historical rationale that reviewers need to retain/);
   assert.match(html, /Former next step · reference only/);
   assert.match(html, /Use this only when comparing the prior account record/);

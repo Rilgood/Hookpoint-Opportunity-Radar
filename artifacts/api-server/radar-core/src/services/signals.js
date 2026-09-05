@@ -64,7 +64,7 @@ export function rescoreCompany(db, tenantId, companyId, asOf = nowIso()) {
       opportunity_tier=?, monitoring_tier=?, next_refresh_at=?, score_version=?, updated_at=? WHERE tenant_id=? AND id=?`,
     [fit, need, intent, timing, risk, score, tier, monitor, addDays(asOf, refreshDays), scoringConfig.version, asOf, tenantId, companyId]
   );
-  if (scoreChanged(company, { fit, need, intent, timing, risk, score, tier })) {
+  if (company.score_version !== scoringConfig.version || scoreChanged(company, { fit, need, intent, timing, risk, score, tier })) {
     db.run(`INSERT INTO score_snapshots(id, tenant_id, company_id, score_version, opportunity_score, opportunity_tier,
       fit_score, need_score, intent_score, timing_score, risk_score, active_signal_count, components_json, computed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id('score'), tenantId, companyId, scoringConfig.version,
@@ -190,28 +190,72 @@ function createRecommendation(db, tenantId, companyId, tier, score) {
 }
 
 function refreshSignalEvidence(db, signalId, definition, asOf) {
-  const signal = db.get('SELECT * FROM signals WHERE id=?', [signalId]);
+  const signal = db.get(`SELECT s.*, c.name company_name FROM signals s
+    JOIN companies c ON c.id=s.company_id WHERE s.id=?`, [signalId]);
   if (!signal) return;
-  const cutoff = addDays(signal.last_seen_at, -definition.halfLifeDays * 2);
-  const evidence = db.all(`SELECT e.source, o.confidence, o.attributes_json, o.observed_at
+  const cutoff = addDays(asOf, -definition.halfLifeDays * 2);
+  const evidence = db.all(`SELECT e.source, o.id, o.url, o.title, o.body, o.type, o.confidence, o.attributes_json, o.observed_at
     FROM signal_evidence e JOIN observations o ON o.id=e.observation_id
-    WHERE e.signal_id=? AND o.observed_at>=? ORDER BY o.observed_at DESC`, [signalId, cutoff]);
+    WHERE e.signal_id=? AND o.observed_at>=? AND o.observed_at<=?
+      AND NOT EXISTS (SELECT 1 FROM evidence_reviews review WHERE review.tenant_id=o.tenant_id
+        AND review.observation_id=o.id AND review.status='rejected')
+    ORDER BY o.observed_at DESC`, [signalId, cutoff, asOf])
+    .map((item) => ({ ...item, attributes: json(item.attributes_json) }))
+    .filter((item) => matches(definition.match, item));
+  const metadata = stableJson({ ...json(signal.metadata_json), offer: definition.offer, play: definition.play, description: definition.description });
   if (!evidence.length) {
-    db.run(`UPDATE signals SET evidence_count=0, source_count=0, confidence=0.05, strength=0.25, status='expired', contribution=0, updated_at=? WHERE id=?`, [asOf, signalId]);
+    db.run(`UPDATE signals SET evidence_count=0, source_count=0, confidence=0.05, strength=0.25, status='expired', contribution=0,
+      label=?, metadata_json=?, updated_at=? WHERE id=?`, [definition.label, metadata, asOf, signalId]);
     return;
+  }
+  // Keep all observations as lineage, but syndicated copies are one piece of
+  // evidence. A transport (for example NewsAPI) is not the originating source.
+  const independentEvidence = new Map();
+  for (const item of evidence) {
+    const origin = evidenceOrigin(item);
+    const previous = independentEvidence.get(origin.key);
+    if (!previous || Number(item.confidence) > Number(previous.confidence)) {
+      independentEvidence.set(origin.key, { ...item, independentSource: origin.source });
+    }
   }
   const bestBySource = new Map();
   let peakStrength = 0.25;
-  for (const item of evidence) {
-    bestBySource.set(item.source, Math.max(bestBySource.get(item.source) || 0, Number(item.confidence) || 0));
-    peakStrength = Math.max(peakStrength, strength({ attributes: json(item.attributes_json) }));
+  for (const item of independentEvidence.values()) {
+    bestBySource.set(item.independentSource, Math.max(bestBySource.get(item.independentSource) || 0, Number(item.confidence) || 0));
+    peakStrength = Math.max(peakStrength, strength(item));
   }
   const confidences = [...bestBySource.values()].sort((a, b) => b - a);
   const confidenceRules = scoringConfig.evidenceConfidence;
   const confidence = clamp(confidences[0] + (1 - confidences[0]) * Math.min(confidenceRules.maximumRemainingLift,
     Math.max(0, confidences.length - 1) * confidenceRules.additionalSourceLift), 0.05, confidenceRules.maximum);
-  db.run(`UPDATE signals SET evidence_count=?, source_count=?, confidence=?, strength=?, updated_at=? WHERE id=?`,
-    [evidence.length, bestBySource.size, round(confidence, 3), round(peakStrength, 2), asOf, signalId]);
+  const latest = evidence[0];
+  db.run(`UPDATE signals SET evidence_count=?, source_count=?, confidence=?, strength=?, label=?, summary=?, metadata_json=?,
+    last_seen_at=?, expires_at=?, status=CASE WHEN status='expired' THEN 'active' ELSE status END, updated_at=? WHERE id=?`,
+    [independentEvidence.size, bestBySource.size, round(confidence, 3), round(peakStrength, 2), definition.label,
+      summarize(definition, { name: signal.company_name }, latest), metadata, latest.observed_at,
+      addDays(latest.observed_at, definition.halfLifeDays * 2), asOf, signalId]);
+}
+
+function evidenceOrigin(item) {
+  if (item.url) {
+    try {
+      const url = new URL(item.url);
+      if (url.protocol === 'http:' || url.protocol === 'https:') {
+        const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+        const host = `${hostname}${url.port ? `:${url.port}` : ''}`;
+        for (const key of [...url.searchParams.keys()]) {
+          if (/^utm_/i.test(key) || /^(fbclid|gclid|dclid|msclkid|mc_cid|mc_eid|igshid)$/i.test(key)) url.searchParams.delete(key);
+        }
+        url.searchParams.sort();
+        // Preserve content-identifying query parameters; discard fragments and
+        // transport differences that do not establish independent reporting.
+        return { key: `url:${host}${url.pathname}${url.search}`, source: `origin:${hostname}` };
+      }
+    } catch {
+      // Legacy rows can lack a valid URL. Retain their connector provenance.
+    }
+  }
+  return { key: `observation:${item.id}`, source: `connector:${item.source}` };
 }
 
 function calculateFit(db, tenantId, company) {
@@ -275,8 +319,25 @@ function test(condition, observation) {
       const haystack = Array.isArray(actual) ? actual.join(' ').toLowerCase() : String(actual ?? '').toLowerCase();
       return expected.some((needle) => haystack.includes(String(needle).toLowerCase()));
     }
+    case 'contains_any_unnegated': return containsUnnegatedPhrase(actual, expected);
     default: return false;
   }
+}
+
+function containsUnnegatedPhrase(actual, phrases) {
+  const text = String(actual ?? '').toLowerCase().replace(/[’‘]/g, "'");
+  return phrases.some((phrase) => {
+    const escaped = String(phrase).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    for (const match of text.matchAll(new RegExp(`\\b${escaped}\\b`, 'g'))) {
+      // Scope negation to this clause, allowing a later explicit positive
+      // request ("not hiring internally, but looking for an agency").
+      const prefix = text.slice(0, match.index).split(/[.!?;]|\b(?:but|however|instead)\b/).at(-1);
+      if (/\b(?:not|never|neither|without)\b|\bno\s+(?:longer|need)\b|n't\b/.test(prefix)) continue;
+      if (/\b(?:if|whether|hypothetically)\b/.test(prefix)) continue;
+      return true;
+    }
+    return false;
+  });
 }
 
 function numeric(actual, expected, compare) {

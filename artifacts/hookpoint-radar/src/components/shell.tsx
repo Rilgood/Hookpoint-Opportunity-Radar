@@ -1,196 +1,279 @@
-import { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Radar, Target, Activity, Plug, ShieldCheck, Menu, LogOut, Lightbulb } from "lucide-react";
+import {
+  Radar,
+  Target,
+  Activity,
+  Plug,
+  ShieldCheck,
+  Menu,
+  LogOut,
+  Lightbulb,
+  ChevronDown,
+  ChevronRight,
+  LockKeyhole,
+  ListTodo,
+  Compass,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { useUser, useClerk } from "@clerk/react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { WorkspaceSearch } from "@/components/workspace-search";
 
 interface ShellProps {
   children: ReactNode;
+  demo?: boolean;
 }
+interface Profile {
+  name: string;
+  email: string;
+  image?: string;
+  initials: string;
+  signOut: () => void;
+}
+const navigation = [
+  { href: "/dashboard", label: "Dashboard", title: "Daily radar", icon: Radar },
+  {
+    href: "/opportunities",
+    label: "Opportunities",
+    title: "Opportunities",
+    icon: Target,
+  },
+  {
+    href: "/work-queue",
+    label: "Work queue",
+    title: "Work queue",
+    icon: ListTodo,
+  },
+  { href: "/insights", label: "Insights", title: "Insights", icon: Lightbulb },
+  { href: "/signals", label: "Signals", title: "Signal feed", icon: Activity },
+  {
+    href: "/setup",
+    label: "Workspace setup",
+    title: "Workspace setup",
+    icon: Compass,
+  },
+  { href: "/sources", label: "Sources", title: "Sources", icon: Plug },
+  {
+    href: "/quality",
+    label: "Data Quality",
+    title: "Data quality",
+    icon: ShieldCheck,
+  },
+];
 
-export function Shell({ children }: ShellProps) {
-  const [location] = useLocation();
-  const { user, isLoaded } = useUser();
-  const { signOut } = useClerk();
-
-  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-  const navItems = [
-    { href: "/dashboard", label: "Dashboard", icon: Radar },
-    { href: "/opportunities", label: "Opportunities", icon: Target },
-    { href: "/insights", label: "Insights", icon: Lightbulb },
-    { href: "/signals", label: "Signals", icon: Activity },
-    { href: "/sources", label: "Sources", icon: Plug },
-    { href: "/quality", label: "Data Quality", icon: ShieldCheck },
-  ];
-
-  const NavLinks = ({ isMobile = false }: { isMobile?: boolean }) => (
-    <>
-      {navItems.map((item) => {
-        const isActive = location === item.href || location.startsWith(`${item.href}/`);
-        return (
-          <Link key={item.href} href={item.href}>
-            <div
-              data-testid={`nav-${item.label.toLowerCase().replace(" ", "-")}`}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer text-sm font-medium ${
-                isActive
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                  : isMobile
-                    ? "text-foreground hover:bg-muted"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              }`}
-            >
-              <item.icon className={`h-[18px] w-[18px] ${isActive ? "" : "opacity-70"}`} />
-              {item.label}
-            </div>
-          </Link>
-        );
-      })}
-    </>
+export function Shell({ children, demo = false }: ShellProps) {
+  return demo ? (
+    <WorkspaceShell demo>{children}</WorkspaceShell>
+  ) : (
+    <AuthenticatedShell>{children}</AuthenticatedShell>
   );
-
+}
+function AuthenticatedShell({ children }: { children: ReactNode }) {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
   return (
-    <div className="flex min-h-[100dvh] w-full bg-background flex-col md:flex-row font-sans">
-      {/* Mobile Nav */}
-      <header className="flex h-16 items-center justify-between border-b bg-card px-4 md:hidden shrink-0 shadow-sm z-20">
-        <div className="flex items-center gap-3">
-          <Sheet>
+    <WorkspaceShell
+      profile={
+        user
+          ? {
+              name: user.fullName || "My workspace",
+              email: user.primaryEmailAddress?.emailAddress || "",
+              image: user.imageUrl,
+              initials: `${user.firstName?.charAt(0) || ""}${user.lastName?.charAt(0) || ""}`,
+              signOut: () => {
+                void signOut({ redirectUrl: basePath || "/" });
+              },
+            }
+          : undefined
+      }
+    >
+      {children}
+    </WorkspaceShell>
+  );
+}
+function WorkspaceShell({
+  children,
+  demo = false,
+  profile,
+}: ShellProps & { profile?: Profile }) {
+  const [location] = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const active = navigation.find(
+    (item) => location === item.href || location.startsWith(`${item.href}/`),
+  );
+  const nav = (mobile = false) => (
+    <nav
+      className="grid gap-1"
+      aria-label={mobile ? "Mobile navigation" : "Workspace navigation"}
+    >
+      {navigation.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          onClick={() => setMobileOpen(false)}
+          aria-current={active?.href === item.href ? "page" : undefined}
+          className={
+            "workspace-nav-item " + (item.href === "/setup" ? "mt-5" : "")
+          }
+          data-testid={`nav-${item.label.toLowerCase().replace(" ", "-")}`}
+        >
+          <item.icon className="workspace-nav-icon size-[18px]" />
+          {item.label}
+          {active?.href === item.href && (
+            <span className="ml-auto size-1 rounded-full bg-blue-500/70" />
+          )}
+        </Link>
+      ))}
+    </nav>
+  );
+  const brand = (
+    <Link href="/dashboard" className="flex items-center gap-3">
+      <span className="brand-lens">
+        <Radar className="size-[23px]" strokeWidth={1.6} />
+      </span>
+      <span>
+        <strong className="block text-[20px] font-semibold tracking-[-.045em] text-foreground">
+          Hookpoint<span className="text-primary">.</span>
+        </strong>
+        <span className="text-[10px] font-medium tracking-[.025em] text-muted-foreground">
+          Opportunity Radar
+        </span>
+      </span>
+    </Link>
+  );
+  const account = profile ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className="h-14 w-full justify-start gap-3 rounded-2xl px-2 text-foreground hover:bg-white/70"
+          data-testid="button-user-menu"
+        >
+          <Avatar className="size-8">
+            <AvatarImage src={profile.image} alt="" />
+            <AvatarFallback className="bg-blue-100/70 text-blue-700">
+              {profile.initials || "HP"}
+            </AvatarFallback>
+          </Avatar>
+          <span className="min-w-0 flex-1 text-left">
+            <span className="block truncate text-sm font-semibold">
+              {profile.name}
+            </span>
+            <span className="block truncate text-[11px] text-muted-foreground">
+              {profile.email}
+            </span>
+          </span>
+          <ChevronDown className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>My account</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={profile.signOut}
+          data-testid="menu-item-logout"
+        >
+          <LogOut className="mr-2 size-4" />
+          Log out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : (
+    <div className="glass-inset flex items-center gap-2.5 p-3">
+      <div className="rounded-full border border-white bg-white/70 p-2 text-slate-500">
+        <Radar className="size-4" />
+      </div>
+      <div>
+        <p className="text-[12px] font-semibold text-foreground">
+          {demo ? "Local workspace" : "Your workspace"}
+        </p>
+        <p className="mt-0.5 text-[10px] text-muted-foreground">
+          {demo ? "Live collection disabled" : "Private intelligence"}
+        </p>
+      </div>
+    </div>
+  );
+  return (
+    <div className="workspace-layout">
+      <div className="workspace-atmosphere" aria-hidden="true" />
+      <a
+        className="sr-only z-50 focus:not-sr-only focus:absolute focus:rounded focus:bg-white focus:p-4"
+        href="#workspace-main"
+      >
+        Skip to content
+      </a>
+      <aside className="workspace-sidebar glass-panel">
+        <div className="px-3 pb-10 pt-3">{brand}</div>
+        <p className="mb-3 px-4 text-[10px] font-semibold uppercase tracking-[.16em] text-slate-400">
+          Workspace
+        </p>
+        {nav()}
+        <div className="mt-auto pt-8">
+          <div className="mb-4 flex items-center gap-2 px-3 text-[10px] text-muted-foreground">
+            <LockKeyhole className="size-3.5" />
+            {demo ? "Isolated on this computer" : "Private workspace"}
+          </div>
+          {account}
+        </div>
+      </aside>
+      <div className="min-w-0">
+        <header className="workspace-header glass-toolbar">
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="-ml-2 md:hidden"
+                className="md:hidden"
+                aria-label="Open navigation"
                 data-testid="button-mobile-navigation"
               >
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle navigation menu</span>
+                <Menu className="size-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[260px] sm:w-[300px] border-r-0">
-              <div className="flex items-center gap-2 mb-8 mt-2 text-primary">
-                <div className="bg-primary text-primary-foreground p-1.5 rounded-lg">
-                  <Radar className="h-5 w-5" />
-                </div>
-                <span className="text-xl font-bold tracking-tight">Hookpoint</span>
-              </div>
-              <nav className="grid gap-1">
-                <NavLinks isMobile />
-              </nav>
+            <SheetContent
+              side="left"
+              className="glass-popover m-3 flex h-[calc(100dvh-24px)] w-[280px] flex-col overflow-y-auto rounded-[28px] p-5"
+            >
+              <SheetTitle className="sr-only">Workspace navigation</SheetTitle>
+              <div className="mb-7 mt-6">{brand}</div>
+              {nav(true)}
+              <div className="mt-auto">{account}</div>
             </SheetContent>
           </Sheet>
-          <div className="flex items-center gap-2 text-primary">
-            <div className="bg-primary text-primary-foreground p-1 rounded-md">
-              <Radar className="h-4 w-4" />
-            </div>
-            <span className="font-bold tracking-tight">Hookpoint</span>
+          <div className="hidden items-center gap-2.5 text-[12px] md:flex">
+            <span className="text-muted-foreground">Workspace</span>
+            <ChevronRight className="size-3.5 text-muted-foreground" />
+            <span className="font-medium">
+              {active?.title || "Account brief"}
+            </span>
           </div>
-        </div>
-
-        {isLoaded && user && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full overflow-hidden h-8 w-8 ring-2 ring-primary/20">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.imageUrl} alt={user.fullName || "User"} />
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-                    {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{user.fullName}</p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {user.primaryEmailAddress?.emailAddress}
-                  </p>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => signOut({ redirectUrl: basePath || "/" })} className="text-destructive focus:text-destructive cursor-pointer">
-                <LogOut className="mr-2 h-4 w-4" />
-                <span>Log out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </header>
-
-      {/* Desktop Sidebar */}
-      <aside className="hidden bg-sidebar text-sidebar-foreground md:flex md:w-[260px] shrink-0 flex-col shadow-xl z-20">
-        <div className="flex h-20 items-center px-6 mb-2">
-          <Link href="/dashboard">
-            <div className="flex items-center gap-3 cursor-pointer text-sidebar-primary-foreground hover:opacity-90 transition-opacity">
-              <div className="bg-white text-sidebar p-1.5 rounded-lg shadow-sm">
-                <Radar className="h-5 w-5" />
-              </div>
-              <span className="text-xl font-bold tracking-tight">Hookpoint</span>
-            </div>
-          </Link>
-        </div>
-
-        <div className="flex-1 overflow-auto py-2 px-4">
-          <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">
-            Your workspace
-          </div>
-          <nav className="grid items-start gap-1">
-            <NavLinks />
-          </nav>
-        </div>
-
-        <div className="mt-auto p-4">
-          <div className="mb-4 rounded-xl bg-sidebar-accent/30 border border-sidebar-accent/50 p-4 text-xs">
-            <p className="font-semibold mb-1.5 flex items-center gap-1.5 text-white">
-              <ShieldCheck className="h-3.5 w-3.5" /> Guidelines
-            </p>
-            <p className="text-sidebar-foreground/80 leading-relaxed">
-              Scores indicate hypothesis, not buyer intent. Suppressed accounts require manual review.
-            </p>
-          </div>
-
-          {isLoaded && user && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="w-full justify-start gap-3 h-14 px-3 rounded-xl hover:bg-sidebar-accent hover:text-white text-sidebar-foreground" data-testid="button-user-menu">
-                  <Avatar className="h-8 w-8 ring-2 ring-sidebar-primary/20">
-                    <AvatarImage src={user.imageUrl} alt={user.fullName || "User"} />
-                    <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs font-bold">
-                      {user.firstName?.charAt(0)}{user.lastName?.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col items-start overflow-hidden flex-1">
-                    <span className="text-sm font-semibold truncate w-full text-left text-white">{user.fullName}</span>
-                    <span className="text-xs opacity-70 truncate w-full text-left">{user.primaryEmailAddress?.emailAddress}</span>
-                  </div>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="right" className="w-56 ml-2 rounded-xl">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut({ redirectUrl: basePath || "/" })} className="text-destructive focus:text-destructive cursor-pointer" data-testid="menu-item-logout">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          {demo && (
+            <span className="workspace-local-badge">Local workspace</span>
           )}
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-auto bg-background flex flex-col relative z-10">
-        <header className="hidden md:flex h-20 items-center px-10 border-b border-border/60 bg-card shrink-0 shadow-sm/50">
-           <div className="flex-1" />
-           {/* Top header - empty for now, aligns with reference keeping top right clean except for maybe notifications or profile if it was there */}
+          <div className="ml-auto">
+            <WorkspaceSearch />
+          </div>
         </header>
-        <div className="p-6 md:p-10 mx-auto max-w-6xl w-full flex-1">
+        <main id="workspace-main" className="workspace-content">
           {children}
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

@@ -32,34 +32,39 @@ export function dashboardSummary(db, tenantId) {
   };
 }
 
-export function listCompanies(db, tenantId, query = {}) {
-  const page = positiveInteger(query.page, 1, 1_000_000);
-  const limit = positiveInteger(query.limit, 50, 200);
-  const where = ['tenant_id = ?'];
+function companyFilters(tenantId, query, prefix = '') {
+  const column = (name) => `${prefix}${name}`;
+  const where = [`${column('tenant_id')} = ?`];
   const params = [tenantId];
-  if (query.tier) { where.push('opportunity_tier = ?'); params.push(query.tier); }
-  if (query.industry) { where.push('industry = ?'); params.push(query.industry); }
-  if (query.monitoring_tier) { where.push('monitoring_tier = ?'); params.push(query.monitoring_tier); }
-  if (query.status) { where.push('status = ?'); params.push(query.status); }
+  if (query.tier) { where.push(`${column('opportunity_tier')} = ?`); params.push(query.tier); }
+  if (query.industry) { where.push(`${column('industry')} = ?`); params.push(query.industry); }
+  if (query.monitoring_tier) { where.push(`${column('monitoring_tier')} = ?`); params.push(query.monitoring_tier); }
+  if (query.status) { where.push(`${column('status')} = ?`); params.push(query.status); }
   if (query.identity_review_status) {
     const allowed = new Set(['unreviewed', 'needs_review', 'confirmed', 'separated']);
     if (!allowed.has(query.identity_review_status)) throw new AppError(400, 'invalid_identity_review_status', 'Unsupported identity review status.');
-    where.push('identity_review_status = ?'); params.push(query.identity_review_status);
+    where.push(`${column('identity_review_status')} = ?`); params.push(query.identity_review_status);
   }
   if (query.min_score != null) {
     const score = Number(query.min_score);
     if (!Number.isFinite(score) || score < 0 || score > 100) throw new AppError(400, 'invalid_min_score', 'min_score must be between 0 and 100.');
-    where.push('opportunity_score >= ?'); params.push(score);
+    where.push(`${column('opportunity_score')} >= ?`); params.push(score);
   }
   if (query.q) {
-    where.push(`(LOWER(name) LIKE ? ESCAPE '\\' OR LOWER(domain) LIKE ? ESCAPE '\\' OR LOWER(industry) LIKE ? ESCAPE '\\' OR LOWER(city) LIKE ? ESCAPE '\\')`);
+    where.push(`(${['name', 'domain', 'industry', 'city'].map((field) => `LOWER(${column(field)}) LIKE ? ESCAPE '\\'`).join(' OR ')})`);
     const needle = `%${escapeLike(String(query.q).slice(0, 100).toLowerCase())}%`;
     params.push(needle, needle, needle, needle);
   }
+  return { clause: where.join(' AND '), params };
+}
+
+export function listCompanies(db, tenantId, query = {}) {
+  const page = positiveInteger(query.page, 1, 1_000_000);
+  const limit = positiveInteger(query.limit, 50, 200);
+  const { clause, params } = companyFilters(tenantId, query);
   const allowedSort = new Set(['opportunity_score','updated_at','name','last_observed_at','fit_score']);
   const sort = allowedSort.has(query.sort) ? query.sort : 'opportunity_score';
   const direction = String(query.direction).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
-  const clause = where.join(' AND ');
   const total = db.get(`SELECT COUNT(*) count FROM companies WHERE ${clause}`, params)?.count || 0;
   const rows = db.all(`SELECT * FROM companies WHERE ${clause} ORDER BY ${sort} ${direction}, name ASC LIMIT ? OFFSET ?`, [...params, limit, (page - 1) * limit]);
   return { data: rows, page, limit, total, pages: Math.ceil(total / limit) };
@@ -69,7 +74,9 @@ export function companyDetail(db, tenantId, companyId) {
   const company = db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, companyId]);
   if (!company) throw new AppError(404, 'company_not_found', 'Company not found.');
   const signals = db.all(`SELECT * FROM signals WHERE tenant_id=? AND company_id=? ORDER BY status='active' DESC, contribution DESC`, [tenantId, companyId]).map(parseSignal);
-  const observations = db.all(`SELECT * FROM observations WHERE tenant_id=? AND company_id=? ORDER BY observed_at DESC LIMIT 100`, [tenantId, companyId]).map(parseObservation);
+  const observations = db.all(`SELECT o.*, COALESCE(r.status, 'unreviewed') review_status, r.note review_note, r.reviewed_by, r.reviewed_at
+    FROM observations o LEFT JOIN evidence_reviews r ON r.tenant_id=o.tenant_id AND r.observation_id=o.id
+    WHERE o.tenant_id=? AND o.company_id=? ORDER BY o.observed_at DESC LIMIT 100`, [tenantId, companyId]).map(parseObservation);
   const people = db.all(`SELECT * FROM people WHERE tenant_id=? AND company_id=? ORDER BY is_decision_maker DESC, confidence DESC`, [tenantId, companyId]);
   const recommendation = db.get(`SELECT * FROM recommendations WHERE tenant_id=? AND company_id=?`, [tenantId, companyId]);
   const events = db.all(`SELECT * FROM lead_events WHERE tenant_id=? AND company_id=? ORDER BY occurred_at DESC LIMIT 50`, [tenantId, companyId]);
@@ -139,23 +146,14 @@ function latestConnectorRuns(db, tenantId) {
 }
 
 export function exportCompaniesCsv(db, tenantId, query = {}) {
-  const where = ['tenant_id=?'];
-  const params = [tenantId];
-  if (query.tier) { where.push('opportunity_tier=?'); params.push(query.tier); }
-  if (query.industry) { where.push('industry=?'); params.push(query.industry); }
-  if (query.status) { where.push('status=?'); params.push(query.status); }
-  if (query.min_score != null) {
-    const score = Number(query.min_score);
-    if (!Number.isFinite(score) || score < 0 || score > 100) throw new AppError(400, 'invalid_min_score', 'min_score must be between 0 and 100.');
-    where.push('opportunity_score>=?'); params.push(score);
-  }
+  const { clause, params } = companyFilters(tenantId, query, 'c.');
   const rows = db.all(`SELECT c.*,
       r.offer recommended_offer, r.next_action recommended_next_action,
       (SELECT p.full_name FROM people p WHERE p.tenant_id=c.tenant_id AND p.company_id=c.id ORDER BY p.is_decision_maker DESC, p.confidence DESC LIMIT 1) buyer_name,
       (SELECT p.title FROM people p WHERE p.tenant_id=c.tenant_id AND p.company_id=c.id ORDER BY p.is_decision_maker DESC, p.confidence DESC LIMIT 1) buyer_title,
       (SELECT p.email FROM people p WHERE p.tenant_id=c.tenant_id AND p.company_id=c.id ORDER BY p.is_decision_maker DESC, p.confidence DESC LIMIT 1) buyer_email
     FROM companies c LEFT JOIN recommendations r ON r.tenant_id=c.tenant_id AND r.company_id=c.id
-    WHERE ${where.map((condition) => `c.${condition}`).join(' AND ')} ORDER BY c.opportunity_score DESC, c.name ASC LIMIT ?`, [...params, config.maxExportRows]);
+    WHERE ${clause} ORDER BY c.opportunity_score DESC, c.name ASC LIMIT ?`, [...params, config.maxExportRows]);
   const headers = ['name','domain','industry','subindustry','city','state','country','employee_count','annual_revenue','status',
     'identity_confidence','identity_method','opportunity_score','opportunity_tier','fit_score','need_score','intent_score','timing_score','risk_score',
     'score_version','monitoring_tier','recommended_offer','recommended_next_action','buyer_name','buyer_title','buyer_email','owner_name','last_observed_at','next_refresh_at'];

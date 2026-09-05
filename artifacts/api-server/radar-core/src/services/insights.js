@@ -1,6 +1,8 @@
 import { AppError, addDays, daysBetween, json, nowIso, round } from '../lib.js';
 import { activeScoringConfig, signalByKey } from './catalog.js';
 import { computeScore } from './signals.js';
+import { outcomeScoreEligibleSql } from './outcome-score.js';
+import { nonRejectedObservation, reviewedSignalHistory } from './evidence-policy.js';
 
 const QUALIFIED = new Set(['meeting', 'opportunity', 'won']);
 const NEGATIVE = new Set(['lost', 'disqualified']);
@@ -11,7 +13,7 @@ export function companyInsights(db, tenantId, companyId, asOf = nowIso()) {
   const company = db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, companyId]);
   if (!company) throw new AppError(404, 'company_not_found', 'Company not found.');
   const config = activeScoringConfig(db, tenantId);
-  const signals = db.all('SELECT * FROM signals WHERE tenant_id=? AND company_id=?', [tenantId, companyId]);
+  const signals = reviewedSignalHistory(db, tenantId, companyId);
   const active = signals.filter((signal) => signal.status === 'active' && signal.expires_at >= asOf);
   const buyerCount = db.get('SELECT COUNT(*) count FROM people WHERE tenant_id=? AND company_id=? AND is_decision_maker=1', [tenantId, companyId])?.count || 0;
   const current = computeScore({ company, signals: active, buyerCount, scoringConfig: config, asOf });
@@ -62,7 +64,7 @@ export function analyticsInsights(db, tenantId, asOf = nowIso()) {
   const labels = firstLabels(db, tenantId);
   const base = cohort(labels);
   const baseRate = rate(base.qualified, base.labeled);
-  const signals = db.all('SELECT * FROM signals WHERE tenant_id=?', [tenantId]);
+  const signals = reviewedSignalHistory(db, tenantId);
   const companies = db.all('SELECT * FROM companies WHERE tenant_id=?', [tenantId]);
   const companyById = new Map(companies.map((company) => [company.id, company]));
   const byCompany = groupBy(signals, 'company_id');
@@ -197,7 +199,7 @@ function whatWouldChange(company, signals, buyerCount, config, asOf, current, st
 function comparableAccounts(db, tenantId, companyId, active) {
   const keys = new Set(active.map((signal) => signal.signal_key));
   const labels = firstLabels(db, tenantId);
-  const allSignals = db.all('SELECT company_id, signal_key, first_seen_at FROM signals WHERE tenant_id=? AND company_id<>?', [tenantId, companyId]);
+  const allSignals = reviewedSignalHistory(db, tenantId).filter((signal) => signal.company_id !== companyId);
   const byCompany = groupBy(allSignals, 'company_id');
   // A comparable account must have shared the signal before its earliest label; later evidence cannot inform the cohort.
   const matches = labels.map((label) => ({
@@ -224,12 +226,13 @@ function comparableAccounts(db, tenantId, companyId, active) {
 }
 
 function firstLabels(db, tenantId) {
-  const rows = db.all(`SELECT company_id, outcome_type, score_at_outcome, occurred_at, created_at, id, note FROM outcomes
+  const rows = db.all(`SELECT company_id, outcome_type, score_at_outcome, occurred_at, created_at, id, note,
+      ${outcomeScoreEligibleSql(db)} score_eligible FROM outcomes o
     WHERE tenant_id=? AND outcome_type IN ('meeting','opportunity','won','lost','disqualified')
     ORDER BY company_id, occurred_at, created_at, id`, [tenantId]);
   const first = new Map();
   for (const row of rows) if (!first.has(row.company_id)) first.set(row.company_id, row);
-  return [...first.values()];
+  return [...first.values()].filter((row) => row.score_eligible);
 }
 
 function cohort(labels) {
@@ -239,7 +242,8 @@ function cohort(labels) {
 
 function sourceEffectiveness(db, tenantId, labels, asOf) {
   const labelMap = new Map(labels.map((label) => [label.company_id, label]));
-  const observations = db.all('SELECT source, company_id, observed_at FROM observations WHERE tenant_id=?', [tenantId]);
+  const observations = db.all(`SELECT source, company_id, observed_at FROM observations observation
+    WHERE tenant_id=? AND ${nonRejectedObservation()}`, [tenantId]);
   const rejectionRows = db.all('SELECT source, COUNT(*) count FROM ingestion_rejections WHERE tenant_id=? GROUP BY source', [tenantId]);
   const rejections = new Map(rejectionRows.map((row) => [row.source, row.count]));
   const groups = groupBy(observations, 'source');

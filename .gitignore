@@ -10,6 +10,10 @@ out-tsc
 
 # dependencies
 node_modules
+/.pnpm-store/
+
+# Local handoff bundles are generated from the committed source.
+/deliverables/
 
 # IDEs and editors
 /.idea
@@ -60,3 +64,9 @@ Thumbs.db
 
 # Local development database (runtime state, mutated by the running API and e2e runs)
 artifacts/api-server/data/*.sqlite
+
+# Local credentials; share only redacted examples.
+.env
+.env.*
+!.env.example
+!.env.production.example

@@ -2,6 +2,7 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { E2E_USER, ensureClerkTestUser, signInWithClerk, type ClerkTestUser } from "./clerk-session";
 import {
   activateIndependentScoringVersion,
+  DEFAULT_SCORING_VERSION,
   getApprovedScoringVersion,
   getScoringVersion,
   openRadarDatabase,
@@ -33,6 +34,14 @@ import {
  */
 
 const runId = `e2e${Date.now().toString(36)}`;
+
+async function openCalibration(page: Page): Promise<void> {
+  const toggle = page.getByRole("button", { name: "Model performance & market coverage" });
+  await expect(toggle).toBeVisible();
+  if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("Outcome Calibration", { exact: true })).toBeVisible();
+}
 
 test.describe.configure({ mode: "serial" });
 
@@ -125,7 +134,7 @@ test.describe("authenticated decision smoke journey", () => {
     seedCalibrationCohort(db, user.id, { runId });
 
     await page.goto("/dashboard");
-    await expect(page.getByText("Outcome Calibration")).toBeVisible();
+    await openCalibration(page);
 
     const [evaluation] = await Promise.all([
       page.waitForResponse(
@@ -141,7 +150,9 @@ test.describe("authenticated decision smoke journey", () => {
     expect(evaluationBody.data.status).toBe("ready");
     staleProposalId = evaluationBody.data.recommendation!.id;
     const staleVersion = evaluationBody.data.recommendation!.version;
-    expect(staleVersion).toMatch(/^rules-1\.1-cal-\d{8}$/);
+    const proposalPrefix = `${DEFAULT_SCORING_VERSION}-cal-`;
+    expect(staleVersion.startsWith(proposalPrefix)).toBe(true);
+    expect(staleVersion.slice(proposalPrefix.length)).toMatch(/^\d{8}$/);
     await expect(page.getByText(`Proposed ${staleVersion}`)).toBeVisible();
     const approveButton = page.getByRole("button", { name: "Approve score version" });
     await expect(approveButton).toBeVisible();
@@ -184,6 +195,7 @@ test.describe("authenticated decision smoke journey", () => {
   });
 
   test("administrator re-evaluates and approves the score recommendation", async () => {
+    await openCalibration(page);
     const [evaluation] = await Promise.all([
       page.waitForResponse(
         (response) =>

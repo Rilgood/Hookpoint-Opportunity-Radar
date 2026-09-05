@@ -1,5 +1,5 @@
 {
-  "version": "rules-1.1",
+  "version": "rules-1.2",
   "dimensionWeights": { "fit": 0.24, "need": 0.32, "intent": 0.24, "timing": 0.20 },
   "calibrationPolicy": { "holdoutFraction": 0.25, "minimumSample": 30, "minEachClass": 10, "minimumTrainingSample": 30, "minTrainingEachClass": 10, "maxWeightShift": 0.05, "minimumAucLift": 0.01 },
   "riskPenalty": 0.65,

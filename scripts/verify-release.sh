@@ -12,10 +12,12 @@
 # When that secret is genuinely absent (a fork without secrets), the gate is
 # skipped with a loud SKIPPED line instead of failing, and the summary at the
 # end repeats which checks did not run. It is never skipped silently.
+# The preflight gate tests the checker itself; inspecting real deployment
+# settings is the separate `pnpm run preflight:production` command.
 
 set -u
 
-release_checks="api-contract api-server radar-core browser-smoke"
+release_checks="production-preflight api-contract api-server radar-core production-rehearsal browser-smoke"
 
 summary=""
 started_at=$(date +%s)
@@ -59,6 +61,9 @@ for check in $release_checks; do
   if pnpm run "verify:$check"; then
     echo "verify:release: PASSED $check in $(elapsed_since "$check_started_at")s"
     record "PASSED   $check ($(elapsed_since "$check_started_at")s)"
+    if [ "$check" = "radar-core" ] && [ -z "${DATABASE_URL:-}" ]; then
+      record "SKIPPED  radar-core-postgres (DATABASE_URL is not set; the SQLite pass does not verify PostgreSQL)"
+    fi
   else
     status=$?
     record "FAILED   $check (exit $status, $(elapsed_since "$check_started_at")s)"

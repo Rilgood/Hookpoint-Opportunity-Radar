@@ -1,22 +1,34 @@
-import { type ReactNode, useEffect, useRef } from "react";
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useEffect, useRef, lazy, Suspense } from "react";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
-import { Route, Switch, useLocation, Router as WouterRouter, Redirect } from "wouter";
+import {
+  Route,
+  Switch,
+  useLocation,
+  Router as WouterRouter,
+  Redirect,
+} from "wouter";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Shell } from "@/components/shell";
-import NotFound from "@/pages/not-found";
-import Dashboard from "@/pages/dashboard";
-import Opportunities from "@/pages/opportunities";
-import OpportunityDetail from "@/pages/opportunity-detail";
-import Insights from "@/pages/insights";
-import Signals from "@/pages/signals";
-import Sources from "@/pages/sources";
-import Quality from "@/pages/quality";
-import Landing from "@/pages/landing";
+const NotFound = lazy(() => import("@/pages/not-found"));
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Opportunities = lazy(() => import("@/pages/opportunities"));
+const OpportunityDetail = lazy(() => import("@/pages/opportunity-detail"));
+const Insights = lazy(() => import("@/pages/insights"));
+const Signals = lazy(() => import("@/pages/signals"));
+const WorkQueue = lazy(() => import("@/pages/work-queue"));
+const Setup = lazy(() => import("@/pages/setup"));
+const Sources = lazy(() => import("@/pages/sources"));
+const Quality = lazy(() => import("@/pages/quality"));
+const Landing = lazy(() => import("@/pages/landing"));
 
 // REQUIRED — copy verbatim. Resolves the key from window.location.hostname so the
 // same build serves multiple Clerk custom domains. Do not inline the env var, leave
@@ -31,6 +43,13 @@ const clerkPubKey = publishableKeyFromHost(
 // is intentional, and any branching breaks the prod proxy.
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 
+// This branch is removed from production builds. A flag alone cannot enable it
+// on a remotely hosted development server.
+const localDemo =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_LOCAL_DEMO === "true" &&
+  ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
+
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function stripBase(path: string): string {
@@ -39,7 +58,7 @@ function stripBase(path: string): string {
     : path;
 }
 
-if (!clerkPubKey) {
+if (!clerkPubKey && !localDemo) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
 }
 
@@ -60,12 +79,14 @@ const clerkAppearance = {
     colorInput: "hsl(0, 0%, 100%)",
     colorInputForeground: "hsl(222, 47%, 11%)",
     colorNeutral: "hsl(214, 32%, 91%)",
-    fontFamily: '"Plus Jakarta Sans", sans-serif',
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif',
     borderRadius: "0.5rem",
   },
   elements: {
     rootBox: "w-full flex justify-center",
-    cardBox: "bg-white rounded-2xl w-[440px] max-w-full overflow-hidden border border-border shadow-sm",
+    cardBox:
+      "bg-white rounded-2xl w-[440px] max-w-full overflow-hidden border border-border shadow-sm",
     card: "!shadow-none !border-0 !bg-transparent !rounded-none",
     footer: "!shadow-none !border-0 !bg-transparent !rounded-none",
     headerTitle: "text-2xl font-bold tracking-tight text-foreground",
@@ -81,8 +102,10 @@ const clerkAppearance = {
     logoBox: "h-12 w-12 mx-auto mb-4",
     logoImage: "w-full h-full",
     socialButtonsBlockButton: "border-border hover:bg-muted transition-colors",
-    formButtonPrimary: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
-    formFieldInput: "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+    formButtonPrimary:
+      "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+    formFieldInput:
+      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
     footerAction: "justify-center",
     dividerLine: "bg-border",
     alert: "bg-destructive/10 border-destructive/20 text-destructive",
@@ -95,7 +118,11 @@ const clerkAppearance = {
 function SignInPage() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-muted/30 px-4 py-12">
-      <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
+      <SignIn
+        routing="path"
+        path={`${basePath}/sign-in`}
+        signUpUrl={`${basePath}/sign-up`}
+      />
     </div>
   );
 }
@@ -103,7 +130,11 @@ function SignInPage() {
 function SignUpPage() {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-muted/30 px-4 py-12">
-      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
+      <SignUp
+        routing="path"
+        path={`${basePath}/sign-up`}
+        signInUrl={`${basePath}/sign-in`}
+      />
     </div>
   );
 }
@@ -121,7 +152,11 @@ function HomeRedirect() {
   );
 }
 
-function ProtectedRoute({ component: Component }: { component: React.ComponentType<any> }) {
+function ProtectedRoute({
+  component: Component,
+}: {
+  component: React.ComponentType<any>;
+}) {
   return (
     <>
       <Show when="signed-in">
@@ -160,10 +195,51 @@ function ClerkQueryClientCacheInvalidator() {
 
 function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
+  return (
+    <ErrorBoundary resetKey={location}>
+      <Suspense
+        fallback={
+          <div role="status" className="p-8 text-sm text-muted-foreground">
+            Loading workspace…
+          </div>
+        }
+      >
+        {children}
+      </Suspense>
+    </ErrorBoundary>
+  );
 }
 
 const queryClient = new QueryClient();
+
+function LocalDemoRoutes() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <RoutedErrorBoundary>
+          <Shell demo>
+            <Switch>
+              <Route path="/">
+                <Redirect to="/dashboard" />
+              </Route>
+              <Route path="/dashboard" component={Dashboard} />
+              <Route path="/opportunities" component={Opportunities} />
+              <Route path="/opportunities/:id" component={OpportunityDetail} />
+              <Route path="/insights" component={Insights} />
+              <Route path="/signals" component={Signals} />
+              <Route path="/work-queue" component={WorkQueue} />
+              <Route path="/setup" component={Setup} />
+              <Route path="/sources" component={Sources} />
+              <Route path="/quality" component={Quality} />
+              <Route component={NotFound} />
+            </Switch>
+          </Shell>
+        </RoutedErrorBoundary>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
 
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
@@ -216,6 +292,12 @@ function ClerkProviderWithRoutes() {
               <Route path="/signals">
                 {() => <ProtectedRoute component={Signals} />}
               </Route>
+              <Route path="/work-queue">
+                {() => <ProtectedRoute component={WorkQueue} />}
+              </Route>
+              <Route path="/setup">
+                {() => <ProtectedRoute component={Setup} />}
+              </Route>
               <Route path="/sources">
                 {() => <ProtectedRoute component={Sources} />}
               </Route>
@@ -236,7 +318,7 @@ function ClerkProviderWithRoutes() {
 function App() {
   return (
     <WouterRouter base={basePath}>
-      <ClerkProviderWithRoutes />
+      {localDemo ? <LocalDemoRoutes /> : <ClerkProviderWithRoutes />}
     </WouterRouter>
   );
 }

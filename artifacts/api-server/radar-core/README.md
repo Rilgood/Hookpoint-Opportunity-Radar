@@ -94,6 +94,16 @@ pnpm run verify:radar-core
 
 That script runs this package's `check` (syntax-checks every file under `src/` and `test/`) and `test` (the `node --test` suite against in-memory SQLite, and a second pass against the workspace Postgres in disposable per-test schemas when `DATABASE_URL` is set: it confirms the starting dataset is empty, ingests canonical fixtures, and exercises entity resolution, scoring, crisis suppression, webhook replay defense, connector hardening and CSV export). Nothing is written to the working `radar` schema. The same command is registered as the `radar-core` validation workflow. You can also run `pnpm run check`, `pnpm run test` and `pnpm run test:postgres` from inside `artifacts/api-server/radar-core`; set `RADAR_TEST_DATABASE_URL` to point the Postgres pass at a different database.
 
+Run the disposable HTTP business simulation on its own:
+
+```bash
+pnpm --dir artifacts/api-server/radar-core run test:simulation
+```
+
+It exercises nine connected stages and 63 HTTP requests across two isolated tenants: company evidence, syndication and replay handling, qualification, identity confirmation/conflicts, crisis suppression, pipeline and revenue, filtered CSV exports, historical-score provenance, and time-based expiration. The clock advances through a 61-day monitoring window. Storage is explicitly in-memory SQLite regardless of `DATABASE_URL`; the temporary localhost server closes after the test. All company identities and evidence are synthetic `.example` fixtures, no provider or messaging API is called, and the local demo workspace is never read or changed. This verifies application semantics; live provider extraction quality, actual prospect fit and predictive conversion accuracy require separately reviewed real evidence and outcomes.
+
+A second, independent 15-request HTTP journey verifies all four workspace-readiness milestones. An account alone does not count as collected evidence; a needs-review flag is not a completed review; an unassigned, undated task is not an owned plan; and another tenant's activity cannot complete your milestones. Both journeys run with `test:simulation`. Saved-task and review contracts are documented in [WORKFLOW_CONTRACT.md](docs/WORKFLOW_CONTRACT.md).
+
 To start over locally on Postgres, stop the API host and `DROP SCHEMA radar CASCADE` (or set `RADAR_DB_SCHEMA` to a fresh name); on SQLite delete `artifacts/api-server/data/hookpoint-radar.sqlite` along with its `-wal` and `-shm` companions. The schema is recreated on the next non-production start. The SQLite file is git-ignored.
 
 ## Production gate

@@ -2,6 +2,8 @@ import { AppError, id, isPlainObject, json, nowIso, redactSecrets, round, stable
 import { config } from '../config.js';
 import { activeScoringConfig, scoringConfig } from './catalog.js';
 import { isUniqueViolation } from '../db/index.js';
+import { outcomeScoreEligibleSql, scoreForOutcome } from './outcome-score.js';
+import { signalSupportedBefore } from './evidence-policy.js';
 
 const types = new Set(['accepted','rejected','contacted','positive_reply','negative_reply','meeting','opportunity','won','lost','disqualified','suppression_correct','suppression_wrong']);
 const statusByOutcome = { accepted: 'accepted', rejected: 'rejected', contacted: 'contacted', positive_reply: 'replied', negative_reply: 'contacted', meeting: 'meeting', opportunity: 'opportunity', won: 'customer', lost: 'lost', disqualified: 'disqualified' };
@@ -39,7 +41,8 @@ export function recordOutcome(db, tenantId, companyId, input, actor = 'operator'
   if (!types.has(input.outcome_type)) throw new AppError(400, 'invalid_outcome_type', `outcome_type must be one of: ${[...types].join(', ')}`);
   const company = db.get('SELECT * FROM companies WHERE tenant_id=? AND id=?', [tenantId, companyId]);
   if (!company) throw new AppError(404, 'company_not_found', 'Company not found.');
-  const occurred = new Date(input.occurred_at || Date.now());
+  const now = nowIso();
+  const occurred = new Date(input.occurred_at || now);
   if (Number.isNaN(occurred.getTime())) throw new AppError(400, 'invalid_occurred_at', 'occurred_at must be a valid date.');
   if (occurred.getTime() > Date.now() + config.maxFutureSkewMinutes * 60_000) throw new AppError(400, 'future_occurred_at', `occurred_at may not be more than ${config.maxFutureSkewMinutes} minutes in the future.`);
   const amount = input.amount == null ? null : Number(input.amount);
@@ -48,18 +51,25 @@ export function recordOutcome(db, tenantId, companyId, input, actor = 'operator'
     throw new AppError(400, 'invalid_signal_key', 'signal_key is not associated with this company.');
   }
   if (input.metadata !== undefined && !isPlainObject(input.metadata)) throw new AppError(400, 'invalid_outcome_metadata', 'metadata must be a JSON object.');
-  const metadata = stableJson(redactSecrets(input.metadata || {}));
+  const occurredAt = occurred.toISOString();
+  const scoreContext = scoreForOutcome(db, tenantId, company, occurredAt, now);
+  const metadata = stableJson({ ...redactSecrets(input.metadata || {}), score_provenance: scoreContext.provenance });
   if (Buffer.byteLength(metadata) > 100_000) throw new AppError(413, 'outcome_metadata_too_large', 'metadata may not exceed 100 KB.');
   const outcomeId = id('outcome');
-  const now = nowIso();
+  const nextStatus = statusByOutcome[input.outcome_type];
+  const latestStatusTime = nextStatus ? db.get(`SELECT MAX(occurred_at) occurred_at FROM (
+    SELECT occurred_at FROM outcomes WHERE tenant_id=? AND company_id=?
+      AND outcome_type IN ('accepted','rejected','contacted','positive_reply','negative_reply','meeting','opportunity','won','lost','disqualified')
+    UNION ALL SELECT occurred_at FROM lead_events WHERE tenant_id=? AND company_id=? AND event_type='workflow_status_changed'
+  ) status_history`, [tenantId, companyId, tenantId, companyId])?.occurred_at : null;
+  const applyStatus = Boolean(nextStatus) && (!latestStatusTime || occurredAt >= latestStatusTime);
   db.run(`INSERT INTO outcomes(id, tenant_id, company_id, outcome_type, signal_key, score_at_outcome, amount, note, metadata_json, occurred_at, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [outcomeId, tenantId, companyId, input.outcome_type, input.signal_key || null,
-    company.opportunity_score, amount, input.note ? String(input.note).slice(0, 2_000) : null, metadata, occurred.toISOString(), now]);
-  const nextStatus = statusByOutcome[input.outcome_type];
-  if (nextStatus) db.run('UPDATE companies SET status=?, updated_at=? WHERE tenant_id=? AND id=?', [nextStatus, now, tenantId, companyId]);
-  if (['rejected','customer','lost','disqualified'].includes(nextStatus)) db.run('DELETE FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, companyId]);
+    scoreContext.score, amount, input.note ? String(input.note).slice(0, 2_000) : null, metadata, occurredAt, now]);
+  if (applyStatus) db.run('UPDATE companies SET status=?, updated_at=? WHERE tenant_id=? AND id=?', [nextStatus, now, tenantId, companyId]);
+  if (applyStatus && ['rejected','customer','lost','disqualified'].includes(nextStatus)) db.run('DELETE FROM recommendations WHERE tenant_id=? AND company_id=?', [tenantId, companyId]);
   db.run(`INSERT INTO lead_events(id, tenant_id, company_id, event_type, from_value, to_value, actor, note, occurred_at)
-    VALUES (?, ?, ?, 'outcome_recorded', ?, ?, ?, ?, ?)`, [id('evt'), tenantId, companyId, company.status, nextStatus || company.status, actor, input.note || input.outcome_type, occurred.toISOString()]);
+    VALUES (?, ?, ?, 'outcome_recorded', ?, ?, ?, ?, ?)`, [id('evt'), tenantId, companyId, company.status, applyStatus ? nextStatus : company.status, actor, input.note || input.outcome_type, occurredAt]);
   const stored = db.get('SELECT * FROM outcomes WHERE tenant_id=? AND id=?', [tenantId, outcomeId]);
   const { metadata_json: metadataJson, ...outcome } = stored;
   return { ...outcome, metadata: json(metadataJson) };
@@ -74,21 +84,17 @@ export function outcomeAnalytics(db, tenantId) {
       COUNT(*) labeled,
       SUM(CASE WHEN outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) positive,
       ROUND(CAST(100.0 * SUM(CASE WHEN outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) / COUNT(*) AS NUMERIC), 1) positive_rate
-    FROM outcomes WHERE tenant_id=? GROUP BY 1 ORDER BY MIN(score_at_outcome) DESC`,
+    FROM outcomes o WHERE tenant_id=? AND ${outcomeScoreEligibleSql(db)} GROUP BY 1 ORDER BY MIN(score_at_outcome) DESC`,
   [scoringConfig.tierThresholds.hot, scoringConfig.tierThresholds.warm, scoringConfig.tierThresholds.watch, tenantId]);
   const signalPerformance = db.all(`SELECT o.signal_key, s.label, COUNT(*) labeled,
       SUM(CASE WHEN o.outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) positive,
       ROUND(CAST(100.0 * SUM(CASE WHEN o.outcome_type IN ('positive_reply','meeting','opportunity','won') THEN 1 ELSE 0 END) / COUNT(*) AS NUMERIC), 1) positive_rate
     FROM outcomes o LEFT JOIN signals s ON s.tenant_id=o.tenant_id AND s.company_id=o.company_id AND s.signal_key=o.signal_key
-    WHERE o.tenant_id=? AND o.signal_key IS NOT NULL GROUP BY o.signal_key, s.label ORDER BY positive_rate DESC, labeled DESC`, [tenantId]);
-  const labelEvents = db.all(`SELECT company_id, outcome_type, score_at_outcome
-    FROM outcomes
-    WHERE tenant_id=? AND outcome_type IN ('meeting', 'opportunity', 'won', 'lost', 'disqualified')
-    ORDER BY company_id ASC, occurred_at ASC, created_at ASC, id ASC`, [tenantId]);
-  const firstLabelByCompany = new Map();
-  for (const event of labelEvents) {
-    if (!firstLabelByCompany.has(event.company_id)) firstLabelByCompany.set(event.company_id, event);
-  }
+    WHERE o.tenant_id=? AND o.signal_key IS NOT NULL AND ${outcomeScoreEligibleSql(db)}
+      AND ${signalSupportedBefore('s', 'o.occurred_at')} GROUP BY o.signal_key, s.label ORDER BY positive_rate DESC, labeled DESC`, [tenantId]);
+  const earliestLabels = firstOutcomeLabels(db, tenantId, { includeExcluded: true });
+  const firstLabelByCompany = new Map(earliestLabels.filter((event) => event.score_eligible).map((event) => [event.company_id, event]));
+  const excludedAccounts = earliestLabels.length - firstLabelByCompany.size;
   const countsByBand = Object.fromEntries(calibrationBands.map((band) => [band, { labeled: 0, qualified: 0, negative: 0 }]));
   for (const event of firstLabelByCompany.values()) {
     const counts = countsByBand[calibrationBand(event.score_at_outcome)];
@@ -129,7 +135,7 @@ export function outcomeAnalytics(db, tenantId) {
         minimum_sample: policy.minimumSample,
         min_each_class: policy.minEachClass,
         sufficient_sample: labeledAccounts >= policy.minimumSample && qualifiedAccounts >= policy.minEachClass && negativeAccounts >= policy.minEachClass,
-        cohort_note: 'Results cover only accounts with a qualifying or negative outcome label; they are observational and do not establish causality.',
+        cohort_note: `Results cover only accounts with a qualifying or negative outcome label and a known score at that time; they are observational and do not establish causality. ${excludedAccounts} account${excludedAccounts === 1 ? '' : 's'} excluded because the earliest label has no known historical score.`,
         recommendation: 'Use this calibration to monitor lead quality only; do not change score weights from these results alone.'
       },
       score_bands: calibrationScoreBands
@@ -213,13 +219,15 @@ function isActiveScoreVersionConflict(error) {
   return isUniqueViolation(error, { table: 'scoring_versions', column: 'tenant_id' });
 }
 
-function firstOutcomeLabels(db, tenantId) {
-  const events = db.all(`SELECT company_id, outcome_type, score_at_outcome, occurred_at, created_at, id FROM outcomes
+function firstOutcomeLabels(db, tenantId, { includeExcluded = false } = {}) {
+  const events = db.all(`SELECT company_id, outcome_type, score_at_outcome, occurred_at, created_at, id,
+      ${outcomeScoreEligibleSql(db)} score_eligible FROM outcomes o
     WHERE tenant_id=? AND outcome_type IN ('meeting', 'opportunity', 'won', 'lost', 'disqualified')
     ORDER BY company_id ASC, occurred_at ASC, created_at ASC, id ASC`, [tenantId]);
   const first = new Map();
   for (const event of events) if (!first.has(event.company_id)) first.set(event.company_id, event);
-  return [...first.values()].sort((a, b) => a.occurred_at.localeCompare(b.occurred_at) || a.id.localeCompare(b.id));
+  return [...first.values()].filter((event) => includeExcluded || event.score_eligible)
+    .sort((a, b) => a.occurred_at.localeCompare(b.occurred_at) || a.id.localeCompare(b.id));
 }
 
 function snapshotAtOutcome(db, tenantId, outcome) {

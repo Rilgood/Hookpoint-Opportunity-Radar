@@ -1,3 +1,5 @@
+import { Link } from "wouter";
+import { Textarea } from "@/components/ui/textarea";
 import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -21,7 +23,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Connector, ConnectorRunInput, useRunRadarConnector, useUpdateRadarConnector } from "@workspace/api-client-react";
+import {
+  Connector,
+  ConnectorRunInput,
+  useRunRadarConnector,
+  useUpdateRadarConnector,
+} from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeLabel } from "@/lib/utils";
@@ -43,6 +50,23 @@ const connectorSchema = z.object({
   range: z.string().optional(),
   company_name: z.string().optional(),
   company_domain: z.string().optional(),
+  actor_input: z
+    .string()
+    .max(100_000)
+    .optional()
+    .refine((value) => {
+      if (!value?.trim()) return true;
+      try {
+        const parsed = JSON.parse(value);
+        return (
+          parsed !== null &&
+          typeof parsed === "object" &&
+          !Array.isArray(parsed)
+        );
+      } catch {
+        return false;
+      }
+    }, "Enter a valid JSON object using your actor’s input schema."),
   query: z.string().optional(),
   cik: z.string().optional(),
   npi: z.string().optional(),
@@ -60,7 +84,11 @@ interface ConnectorDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDialogProps) {
+export function ConnectorDialog({
+  connector,
+  open,
+  onOpenChange,
+}: ConnectorDialogProps) {
   const [isSuccessRun, setIsSuccessRun] = useState(false);
   const [runStats, setRunStats] = useState<{
     seen: number;
@@ -80,6 +108,7 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
       range: "",
       company_name: "",
       company_domain: "",
+      actor_input: "",
       query: "",
       cik: "",
       npi: "",
@@ -95,14 +124,21 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
     if (open && connector) {
       setIsSuccessRun(false);
       setRunStats(null);
-      const config = connector.config as { scheduleInput?: Record<string, any> } | undefined;
+      const config = connector.config as
+        { scheduleInput?: Record<string, any> } | undefined;
       const scheduleInput = config?.scheduleInput;
       if (scheduleInput) {
         form.reset({
-          spreadsheet_target: scheduleInput.spreadsheet_url || scheduleInput.spreadsheet_id || "",
-          range: scheduleInput.range || (key === "google_sheets" ? "Sheet1!A1:Z500" : ""),
+          spreadsheet_target:
+            scheduleInput.spreadsheet_url || scheduleInput.spreadsheet_id || "",
+          range:
+            scheduleInput.range ||
+            (key === "google_sheets" ? "Sheet1!A1:Z500" : ""),
           company_name: scheduleInput.company?.name || "",
           company_domain: scheduleInput.company?.domain || "",
+          actor_input: scheduleInput.actor_input
+            ? JSON.stringify(scheduleInput.actor_input, null, 2)
+            : "",
           query: scheduleInput.query || "",
           cik: scheduleInput.cik || "",
           npi: scheduleInput.npi || "",
@@ -117,6 +153,7 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
           range: key === "google_sheets" ? "Sheet1!A1:Z500" : "",
           company_name: "",
           company_domain: "",
+          actor_input: "",
           query: "",
           cik: "",
           npi: "",
@@ -140,36 +177,67 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
             inserted: data.inserted || 0,
             duplicates: data.duplicates || 0,
             rejected: data.rejected || 0,
-            signals: data.signals || 0,
+            signals: data.signals_created || 0,
           });
         }
 
         toast({
-          title: "Run completed",
-          description: "The connector has finished collecting data.",
+          title: data?.rejected
+            ? "Import needs review"
+            : data?.inserted
+              ? "Evidence imported"
+              : "No new evidence",
+          description: data?.rejected
+            ? `${data.rejected} records were rejected. Review data quality before relying on this import.`
+            : data?.inserted
+              ? `${data.inserted} observations saved. Review account identity and evidence next.`
+              : "The run completed without adding observations. Check the target, date range and duplicates.",
         });
 
+        queryClient.invalidateQueries({
+          queryKey: ["/api/v1/workspace-readiness"],
+        });
         // Invalidate queries so new data appears
-        queryClient.invalidateQueries({ queryKey: getListRadarConnectorsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListRadarConnectorRunsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetRadarDashboardQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListRadarCompaniesQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListRadarSignalsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetRadarDataQualityQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListRadarReviewQueueQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getListRadarConnectorsQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getListRadarConnectorRunsQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetRadarDashboardQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getListRadarCompaniesQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getListRadarSignalsQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetRadarDataQualityQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getListRadarReviewQueueQueryKey(),
+        });
       },
       onError: (error) => {
         const err = error as { data?: { error?: { message?: string } } };
         // A failed run is still a run: refresh the history and the connector state it changed.
-        queryClient.invalidateQueries({ queryKey: getListRadarConnectorsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListRadarConnectorRunsQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getListRadarConnectorsQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getListRadarConnectorRunsQueryKey(),
+        });
         toast({
           title: "Run failed",
-          description: err?.data?.error?.message || "An unexpected error occurred while running.",
+          description:
+            err?.data?.error?.message ||
+            "An unexpected error occurred while running.",
           variant: "destructive",
         });
       },
-    }
+    },
   });
 
   const updateMutation = useUpdateRadarConnector({
@@ -179,18 +247,25 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
           title: "Schedule saved",
           description: "Connector schedule has been updated and enabled.",
         });
-        queryClient.invalidateQueries({ queryKey: getListRadarConnectorsQueryKey() });
+        queryClient.invalidateQueries({
+          queryKey: getListRadarConnectorsQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["/api/v1/workspace-readiness"],
+        });
         onOpenChange(false);
       },
       onError: (error) => {
         const err = error as { data?: { error?: { message?: string } } };
         toast({
           title: "Failed to schedule",
-          description: err?.data?.error?.message || "An unexpected error occurred while scheduling.",
+          description:
+            err?.data?.error?.message ||
+            "An unexpected error occurred while scheduling.",
           variant: "destructive",
         });
       },
-    }
+    },
   });
 
   if (!connector) return null;
@@ -200,31 +275,62 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
   const isRecurring = connector.cadence !== "manual" && !isPush;
 
   const prepareInput = (values: FormValues): ConnectorRunInput => {
-    const input: Record<string, any> = {};
-    if (values.company_name || values.company_domain) {
-      input.company = {};
-      if (values.company_name) input.company.name = values.company_name;
-      if (values.company_domain) input.company.domain = values.company_domain;
+    const saved = (
+      connector.config as { scheduleInput?: Record<string, any> } | undefined
+    )?.scheduleInput;
+    // The focused form only owns visible fields. Preserve provider-specific
+    // settings and extra identity fields that may have been saved via the API.
+    const input: Record<string, any> = { ...saved };
+    const hasCompanyFields =
+      ["gdelt", "newsapi", "sec_edgar", "usa_spending", "nppes"].includes(
+        key,
+      ) || key.startsWith("apify_");
+    if (hasCompanyFields) {
+      const company = { ...saved?.company };
+      delete company.name;
+      delete company.domain;
+      if (values.company_name?.trim())
+        company.name = values.company_name.trim();
+      if (values.company_domain?.trim())
+        company.domain = values.company_domain.trim();
+      if (Object.keys(company).length) input.company = company;
+      else delete input.company;
     }
-    
+    const replaceField = (field: string, value?: string | number) => {
+      delete input[field];
+      const normalized = typeof value === "string" ? value.trim() : value;
+      if (normalized !== undefined && normalized !== "")
+        input[field] = normalized;
+    };
     if (key === "google_sheets") {
+      delete input.spreadsheet_url;
+      delete input.spreadsheet_id;
       const target = values.spreadsheet_target?.trim();
-      if (target) {
-        if (target.startsWith("https://docs.google.com/")) {
-          input.spreadsheet_url = target;
-        } else {
-          input.spreadsheet_id = target;
-        }
-      }
-      if (values.range) input.range = values.range;
+      if (target)
+        input[
+          target.startsWith("https://docs.google.com/")
+            ? "spreadsheet_url"
+            : "spreadsheet_id"
+        ] = target;
+      replaceField("range", values.range);
     } else {
-      if (values.query) input.query = values.query;
-      if (values.cik) input.cik = values.cik;
-      if (values.npi) input.npi = values.npi;
-      if (values.state) input.state = values.state;
-      if (values.start_date) input.start_date = values.start_date;
-      if (values.end_date) input.end_date = values.end_date;
-      if (values.limit) input.limit = values.limit;
+      if (key === "gdelt" || key === "newsapi")
+        replaceField("query", values.query);
+      if (key === "sec_edgar") replaceField("cik", values.cik);
+      if (key === "nppes") {
+        replaceField("npi", values.npi);
+        replaceField("state", values.state);
+      }
+      if (key === "usa_spending") {
+        replaceField("start_date", values.start_date);
+        replaceField("end_date", values.end_date);
+      }
+      if (key !== "generic_webhook") replaceField("limit", values.limit);
+    }
+    if (key.startsWith("apify_")) {
+      delete input.actor_input;
+      if (values.actor_input?.trim())
+        input.actor_input = JSON.parse(values.actor_input);
     }
     return input as ConnectorRunInput;
   };
@@ -252,47 +358,109 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
         <DialogHeader>
           <DialogTitle>Configure {connector.label}</DialogTitle>
           <DialogDescription>
-            {key === 'google_sheets' && "Managed Replit connection. Enter your sheet details below."}
-            {key === 'gdelt' && "News & Events. No credentials required."}
-            {key === 'sec_edgar' && "SEC Filings. No credentials required."}
-            {key === 'nppes' && "Healthcare Provider Data. No credentials required. Firmographic enrichment, not buyer intent."}
-            {key === 'usa_spending' && "Federal Awards. No credentials required."}
-            {key === 'generic_webhook' && "Webhooks are configured server-side. Push mode is active."}
+            {key === "google_sheets" &&
+              "Managed Replit connection. Enter your sheet details below."}
+            {key === "gdelt" && "News & Events. No credentials required."}
+            {key === "sec_edgar" && "SEC Filings. No credentials required."}
+            {key === "nppes" &&
+              "Healthcare Provider Data. No credentials required. Firmographic enrichment, not buyer intent."}
+            {key === "usa_spending" &&
+              "Federal Awards. No credentials required."}
+            {key === "newsapi" && "Dated news coverage for a named company."}
+            {key.startsWith("apify_") &&
+              "Use the input schema of the actor configured for this source."}
+            {key === "generic_webhook" &&
+              "Webhooks require server-side configuration and signed events."}
           </DialogDescription>
         </DialogHeader>
 
         {isSuccessRun ? (
           <div className="py-6 flex flex-col items-center justify-center space-y-4 text-center">
-            <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center dark:bg-green-900/30">
-              <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+            <div
+              className={`h-12 w-12 rounded-full flex items-center justify-center ${runStats?.rejected ? "bg-amber-100 text-amber-700" : runStats?.inserted ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-500"}`}
+            >
+              {runStats?.inserted && !runStats.rejected ? (
+                <CheckCircle2 className="h-6 w-6" />
+              ) : (
+                <AlertCircle className="h-6 w-6" />
+              )}
             </div>
             <div>
-              <h3 className="text-lg font-medium text-foreground">Run Successful</h3>
-              <p className="text-sm text-muted-foreground mt-1">Data has been collected and processed.</p>
+              <h3 className="text-lg font-medium text-foreground">
+                {runStats?.rejected
+                  ? "Import needs review"
+                  : runStats?.inserted
+                    ? "Evidence imported"
+                    : "No new evidence"}
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                {runStats?.rejected
+                  ? "Some records were rejected. Inspect them before relying on this import."
+                  : runStats?.inserted
+                    ? "Open the imported accounts to review their identity and evidence."
+                    : "No observations were added. The source may have no matches or only previously imported records."}
+              </p>
             </div>
 
             {runStats && (
               <div className="grid grid-cols-2 gap-4 w-full mt-4 text-left">
                 <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-md border border-border">
-                  <span className="text-xs text-muted-foreground block">Observations Seen</span>
+                  <span className="text-xs text-muted-foreground block">
+                    Observations Seen
+                  </span>
                   <span className="text-lg font-semibold">{runStats.seen}</span>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-md border border-border">
-                  <span className="text-xs text-muted-foreground block">Inserted</span>
-                  <span className="text-lg font-semibold text-green-600">{runStats.inserted}</span>
+                  <span className="text-xs text-muted-foreground block">
+                    Inserted
+                  </span>
+                  <span className="text-lg font-semibold text-green-600">
+                    {runStats.inserted}
+                  </span>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-md border border-border">
-                  <span className="text-xs text-muted-foreground block">Duplicates Skipped</span>
-                  <span className="text-lg font-semibold text-amber-600">{runStats.duplicates}</span>
+                  <span className="text-xs text-muted-foreground block">
+                    Duplicates Skipped
+                  </span>
+                  <span className="text-lg font-semibold text-amber-600">
+                    {runStats.duplicates}
+                  </span>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-md border border-border">
-                  <span className="text-xs text-muted-foreground block">New Signals</span>
-                  <span className="text-lg font-semibold text-primary">{runStats.signals}</span>
+                  <span className="text-xs text-muted-foreground block">
+                    New signals
+                  </span>
+                  <span className="text-lg font-semibold text-primary">
+                    {runStats.signals}
+                  </span>
                 </div>
               </div>
             )}
 
-            <Button onClick={() => onOpenChange(false)} className="mt-4 w-full" data-testid="button-close-success">
+            {!!runStats?.rejected && (
+              <p className="text-sm text-amber-800">
+                {runStats.rejected} rejected records ·{" "}
+                <Link
+                  href="/quality"
+                  onClick={() => onOpenChange(false)}
+                  className="underline"
+                >
+                  Review data quality
+                </Link>
+              </p>
+            )}
+            {!!runStats?.inserted && (
+              <Button asChild variant="outline">
+                <Link href="/opportunities" onClick={() => onOpenChange(false)}>
+                  Review accounts
+                </Link>
+              </Button>
+            )}
+            <Button
+              onClick={() => onOpenChange(false)}
+              className="mt-4 w-full"
+              data-testid="button-close-success"
+            >
               Close
             </Button>
           </div>
@@ -302,8 +470,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
               {key === "google_sheets" && (
                 <>
                   <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 p-3 rounded-md text-xs mb-4">
-                    <strong>Required headers:</strong> type, title, and (company_name or company_domain).<br/>
-                    <strong>Optional headers:</strong> body, url, external_id, observed_at, amount, industry, city, state, country.
+                    <strong>Required headers:</strong> type, title, and
+                    (company_name or company_domain).
+                    <br />
+                    <strong>Optional headers:</strong> body, url, external_id,
+                    observed_at, amount, industry, city, state, country.
                   </div>
                   <FormField
                     control={form.control}
@@ -312,7 +483,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                       <FormItem>
                         <FormLabel>Spreadsheet URL or ID</FormLabel>
                         <FormControl>
-                          <Input placeholder="https://docs.google.com/spreadsheets/d/..." {...field} data-testid="input-spreadsheet-url" />
+                          <Input
+                            placeholder="https://docs.google.com/spreadsheets/d/..."
+                            {...field}
+                            data-testid="input-spreadsheet-url"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -325,7 +500,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                       <FormItem>
                         <FormLabel>Sheet Range (A1 notation)</FormLabel>
                         <FormControl>
-                          <Input placeholder="Sheet1!A1:Z500" {...field} data-testid="input-range" />
+                          <Input
+                            placeholder="Sheet1!A1:Z500"
+                            {...field}
+                            data-testid="input-range"
+                          />
                         </FormControl>
                         <FormDescription>E.g., Sheet1!A1:Z500.</FormDescription>
                         <FormMessage />
@@ -335,16 +514,29 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                 </>
               )}
 
-              {(key === "gdelt" || key === "sec_edgar" || key === "usa_spending" || key === "nppes") && (
+              {(key === "gdelt" ||
+                key === "newsapi" ||
+                key.startsWith("apify_") ||
+                key === "sec_edgar" ||
+                key === "usa_spending" ||
+                key === "nppes") && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="company_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{key === 'nppes' ? 'Organization Name' : 'Company Name'}</FormLabel>
+                        <FormLabel>
+                          {key === "nppes"
+                            ? "Organization Name"
+                            : "Company Name"}
+                        </FormLabel>
                         <FormControl>
-                          <Input placeholder="Acme Corp" {...field} data-testid="input-company-name" />
+                          <Input
+                            placeholder="Acme Corp"
+                            {...field}
+                            data-testid="input-company-name"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -357,7 +549,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                       <FormItem>
                         <FormLabel>Company Domain</FormLabel>
                         <FormControl>
-                          <Input placeholder="acme.com" {...field} data-testid="input-company-domain" />
+                          <Input
+                            placeholder="acme.com"
+                            {...field}
+                            data-testid="input-company-domain"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -366,7 +562,7 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                 </div>
               )}
 
-              {key === "gdelt" && (
+              {(key === "gdelt" || key === "newsapi") && (
                 <FormField
                   control={form.control}
                   name="query"
@@ -374,7 +570,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                     <FormItem>
                       <FormLabel>Focused Query (Optional)</FormLabel>
                       <FormControl>
-                        <Input placeholder="expansion OR acquisition" {...field} data-testid="input-query" />
+                        <Input
+                          placeholder="expansion OR acquisition"
+                          {...field}
+                          data-testid="input-query"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -390,7 +590,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                     <FormItem>
                       <FormLabel>CIK (Central Index Key)</FormLabel>
                       <FormControl>
-                        <Input placeholder="0000320193" {...field} data-testid="input-cik" />
+                        <Input
+                          placeholder="0000320193"
+                          {...field}
+                          data-testid="input-cik"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -407,7 +611,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                       <FormItem>
                         <FormLabel>NPI</FormLabel>
                         <FormControl>
-                          <Input placeholder="1234567890" {...field} data-testid="input-npi" />
+                          <Input
+                            placeholder="1234567890"
+                            {...field}
+                            data-testid="input-npi"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -420,7 +628,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                       <FormItem>
                         <FormLabel>State</FormLabel>
                         <FormControl>
-                          <Input placeholder="NY" {...field} data-testid="input-state" />
+                          <Input
+                            placeholder="NY"
+                            {...field}
+                            data-testid="input-state"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -438,7 +650,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                       <FormItem>
                         <FormLabel>Start Date</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} data-testid="input-start-date" />
+                          <Input
+                            type="date"
+                            {...field}
+                            data-testid="input-start-date"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -451,7 +667,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                       <FormItem>
                         <FormLabel>End Date</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} data-testid="input-end-date" />
+                          <Input
+                            type="date"
+                            {...field}
+                            data-testid="input-end-date"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -468,7 +688,13 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                     <FormItem>
                       <FormLabel>Result Limit</FormLabel>
                       <FormControl>
-                        <Input type="number" min="1" max="100" {...field} data-testid="input-limit" />
+                        <Input
+                          type="number"
+                          min="1"
+                          max="100"
+                          {...field}
+                          data-testid="input-limit"
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -476,10 +702,36 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
                 />
               )}
 
+              {key.startsWith("apify_") && (
+                <FormField
+                  control={form.control}
+                  name="actor_input"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Actor input JSON</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          {...field}
+                          placeholder={'{"startUrls": []}'}
+                          rows={6}
+                          className="font-mono text-xs"
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Use the schema of your configured actor. Put targets and
+                        collection limits here; keep credentials in the server
+                        environment.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               {key === "generic_webhook" && (
                 <div className="p-4 bg-muted text-muted-foreground rounded-md text-sm border">
                   <AlertCircle className="h-5 w-5 mb-2 text-primary" />
-                  This connector is configured server-side for push events. The signing secret is maintained in your environment variables.
+                  This connector is configured server-side for push events. The
+                  signing secret is maintained in your environment variables.
                 </div>
               )}
             </form>
@@ -522,7 +774,11 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
               </>
             )}
             {key === "generic_webhook" && (
-              <Button type="button" onClick={() => onOpenChange(false)} data-testid="button-close">
+              <Button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                data-testid="button-close"
+              >
                 Close
               </Button>
             )}

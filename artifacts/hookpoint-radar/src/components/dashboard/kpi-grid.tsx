@@ -1,7 +1,9 @@
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
-import { Target, Flame, Activity, ShieldCheck, ArrowUpRight, TrendingUp } from "lucide-react";
+import { Activity, ArrowUpRight, CircleDot, ShieldCheck } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
-import { DashboardSummary, DataQuality } from "@workspace/api-client-react";
+import type {
+  DashboardSummary,
+  DataQuality,
+} from "@workspace/api-client-react";
 
 interface KpiGridProps {
   summary?: DashboardSummary;
@@ -9,76 +11,72 @@ interface KpiGridProps {
 }
 
 export function KpiGrid({ summary, quality }: KpiGridProps) {
+  const metrics = [
+    {
+      key: "accounts",
+      label: "Total accounts",
+      value: formatNumber(summary?.companies || 0),
+      context: "In your workspace",
+      icon: CircleDot,
+    },
+    {
+      key: "hot",
+      label: "Hot opportunities",
+      value: formatNumber(summary?.hot || 0),
+      context: "Prioritized for review",
+      icon: ArrowUpRight,
+    },
+    {
+      key: "signals",
+      label: "Active signals",
+      value: formatNumber(summary?.active_signals || 0),
+      context: `${formatNumber(summary?.new_signals_7d || 0)} seen in the past 7 days`,
+      icon: Activity,
+    },
+    {
+      key: "health",
+      label: "Evidence confidence",
+      value:
+        quality && quality.observations.total > 0
+          ? `${Math.round(quality.observations.average_confidence * 100)}%`
+          : "—",
+      context: "Source-reported, not accuracy",
+      icon: ShieldCheck,
+    },
+  ];
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="grid-kpi">
-      <Card data-testid="kpi-accounts" className="shadow-sm border border-border/80 rounded-xl">
-        <CardContent className="p-5 flex flex-col justify-between h-full">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wide">Total accounts</CardTitle>
-            <Target className="h-4 w-4 text-muted-foreground/40" />
-          </div>
-          <div className="mt-4 flex items-baseline gap-3">
-            <div className="text-3xl font-bold tracking-tight text-foreground" data-testid="text-kpi-accounts">
-              {formatNumber(summary?.companies || 0)}
-            </div>
-            <span className="inline-flex items-center gap-1 rounded bg-cold/10 px-1.5 py-0.5 text-xs font-semibold text-cold">
-              <TrendingUp className="h-3 w-3" /> 12%
+    <dl
+      className="glass-panel grid grid-cols-2 overflow-hidden rounded-[28px] md:grid-cols-4"
+      data-testid="grid-kpi"
+      aria-label="Workspace at a glance"
+    >
+      {metrics.map((metric, index) => (
+        <div
+          key={metric.key}
+          data-testid={`kpi-${metric.key}`}
+          className={`relative px-5 py-6 sm:px-7 sm:py-7 ${index < 2 ? "border-b border-white/70 md:border-b-0" : ""} ${index % 2 === 0 ? "border-r border-white/70" : ""} ${index === 1 ? "md:border-r md:border-white/70" : ""}`}
+        >
+          <dt className="flex items-center gap-2 text-[12px] font-medium tracking-[-0.01em] text-slate-600 sm:text-[13px]">
+            <metric.icon
+              className="size-3.5 shrink-0 text-slate-400"
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
+            {metric.label}
+          </dt>
+          <dd className="mt-3">
+            <span
+              className="block text-[40px] font-medium leading-none tracking-[-0.065em] text-slate-950 tabular-nums sm:text-[46px]"
+              data-testid={`text-kpi-${metric.key}`}
+            >
+              {metric.value}
             </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card data-testid="kpi-hot" className="shadow-sm border border-border/80 rounded-xl relative overflow-hidden">
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-hot" />
-        <CardContent className="p-5 flex flex-col justify-between h-full pl-6">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wide">Hot Opportunities</CardTitle>
-            <Flame className="h-4 w-4 text-hot/50" />
-          </div>
-          <div className="mt-4 flex items-baseline gap-3">
-            <div className="text-3xl font-bold tracking-tight text-foreground" data-testid="text-kpi-hot">
-              {formatNumber(summary?.hot || 0)}
-            </div>
-            <span className="inline-flex items-center gap-1 rounded bg-hot/10 px-1.5 py-0.5 text-xs font-semibold text-hot">
-              Action needed
+            <span className="mt-3 block text-[11px] leading-relaxed tracking-[-0.01em] text-slate-500 sm:text-xs">
+              {metric.context}
             </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card data-testid="kpi-signals" className="shadow-sm border border-border/80 rounded-xl">
-        <CardContent className="p-5 flex flex-col justify-between h-full">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wide">Active Signals</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground/40" />
-          </div>
-          <div className="mt-4 flex items-baseline gap-3">
-            <div className="text-3xl font-bold tracking-tight text-foreground" data-testid="text-kpi-signals">
-              {formatNumber(summary?.active_signals || 0)}
-            </div>
-            <span className="inline-flex items-center gap-1 rounded bg-cold/10 px-1.5 py-0.5 text-xs font-semibold text-cold">
-              +{formatNumber(summary?.new_signals_7d || 0)} new
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card data-testid="kpi-health" className="shadow-sm border border-border/80 rounded-xl">
-        <CardContent className="p-5 flex flex-col justify-between h-full">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-[13px] font-semibold text-muted-foreground uppercase tracking-wide">Data Health</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-muted-foreground/40" />
-          </div>
-          <div className="mt-4 flex items-baseline gap-3">
-            <div className="text-3xl font-bold tracking-tight text-foreground" data-testid="text-kpi-health">
-              {quality ? `${Math.round(quality.observations.average_confidence * 100)}%` : "--"}
-            </div>
-            <span className="text-[11px] font-medium text-muted-foreground">
-              Avg confidence
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

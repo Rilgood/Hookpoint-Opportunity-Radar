@@ -31,9 +31,11 @@ import type {
   ConnectorRunsResponse,
   ConnectorUpdate,
   ConnectorsResponse,
+  CreateWorkItemInput,
   DashboardResponse,
   DataQualityResponse,
   ErrorResponse,
+  EvidenceReviewListResponse,
   HealthStatus,
   IdentityConfirmationInput,
   IdentityMergeInput,
@@ -43,16 +45,24 @@ import type {
   IngestionResponse,
   ListRadarCompaniesParams,
   ListRadarConnectorRunsParams,
+  ListRadarEvidenceReviewsParams,
   ListRadarReviewQueueParams,
   ListRadarSignalsParams,
+  ListRadarWorkItemsParams,
   ObservationBatchInput,
   OutcomeAnalyticsResponse,
   OutcomeInput,
   OutcomeResponse,
+  ReviewEvidenceInput,
+  ReviewEvidenceResponse,
   ReviewQueueResponse,
   ScoreCalibrationEvaluationResponse,
   ScoreVersionResponse,
-  SignalsResponse
+  SignalsResponse,
+  UpdateWorkItemInput,
+  WorkItemListResponse,
+  WorkItemResponse,
+  WorkspaceReadinessResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -81,6 +91,548 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetRadarWorkspaceReadinessUrl = () => {
+
+
+
+
+  return `/api/v1/workspace-readiness`
+}
+
+/**
+ * @summary Read source prerequisites and evidence-backed workspace setup progress
+ */
+export const getRadarWorkspaceReadiness = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceReadinessResponse> => {
+
+  return customFetch<WorkspaceReadinessResponse>(getGetRadarWorkspaceReadinessUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRadarWorkspaceReadinessQueryKey = () => {
+    return [
+    `/api/v1/workspace-readiness`
+    ] as const;
+    }
+
+
+export const getGetRadarWorkspaceReadinessQueryOptions = <TData = Awaited<ReturnType<typeof getRadarWorkspaceReadiness>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarWorkspaceReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRadarWorkspaceReadinessQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRadarWorkspaceReadiness>>> = ({ signal }) => getRadarWorkspaceReadiness({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRadarWorkspaceReadiness>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRadarWorkspaceReadinessQueryResult = NonNullable<Awaited<ReturnType<typeof getRadarWorkspaceReadiness>>>
+export type GetRadarWorkspaceReadinessQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Read source prerequisites and evidence-backed workspace setup progress
+ */
+
+export function useGetRadarWorkspaceReadiness<TData = Awaited<ReturnType<typeof getRadarWorkspaceReadiness>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarWorkspaceReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRadarWorkspaceReadinessQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListRadarWorkItemsUrl = (params?: ListRadarWorkItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/work-items?${stringifiedParams}` : `/api/v1/work-items`
+}
+
+/**
+ * @summary List saved work and authoritative filtered counts
+ */
+export const listRadarWorkItems = async (params?: ListRadarWorkItemsParams, options?: Parameters<typeof customFetch>[1]): Promise<WorkItemListResponse> => {
+
+  return customFetch<WorkItemListResponse>(getListRadarWorkItemsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRadarWorkItemsQueryKey = (params?: ListRadarWorkItemsParams,) => {
+    return [
+    `/api/v1/work-items`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListRadarWorkItemsQueryOptions = <TData = Awaited<ReturnType<typeof listRadarWorkItems>>, TError = ErrorType<unknown>>(params?: ListRadarWorkItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRadarWorkItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRadarWorkItemsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRadarWorkItems>>> = ({ signal }) => listRadarWorkItems(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRadarWorkItems>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRadarWorkItemsQueryResult = NonNullable<Awaited<ReturnType<typeof listRadarWorkItems>>>
+export type ListRadarWorkItemsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List saved work and authoritative filtered counts
+ */
+
+export function useListRadarWorkItems<TData = Awaited<ReturnType<typeof listRadarWorkItems>>, TError = ErrorType<unknown>>(
+ params?: ListRadarWorkItemsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRadarWorkItems>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRadarWorkItemsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateRadarWorkItemUrl = () => {
+
+
+
+
+  return `/api/v1/work-items`
+}
+
+/**
+ * @summary Save an accountable next action
+ */
+export const createRadarWorkItem = async (createWorkItemInput: CreateWorkItemInput, options?: Parameters<typeof customFetch>[1]): Promise<WorkItemResponse> => {
+
+  return customFetch<WorkItemResponse>(getCreateRadarWorkItemUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createWorkItemInput)
+  }
+);}
+
+
+
+
+
+export const getCreateRadarWorkItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRadarWorkItem>>, TError,{data: BodyType<CreateWorkItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRadarWorkItem>>, TError,{data: BodyType<CreateWorkItemInput>}, TContext> => {
+
+const mutationKey = ['createRadarWorkItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRadarWorkItem>>, {data: BodyType<CreateWorkItemInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createRadarWorkItem(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRadarWorkItemMutationResult = NonNullable<Awaited<ReturnType<typeof createRadarWorkItem>>>
+    export type CreateRadarWorkItemMutationBody = BodyType<CreateWorkItemInput>
+    export type CreateRadarWorkItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Save an accountable next action
+ */
+export const useCreateRadarWorkItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRadarWorkItem>>, TError,{data: BodyType<CreateWorkItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRadarWorkItem>>,
+        TError,
+        {data: BodyType<CreateWorkItemInput>},
+        TContext
+      > => {
+      return useMutation(getCreateRadarWorkItemMutationOptions(options));
+    }
+
+export const getGetRadarWorkItemUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/work-items/${id}`
+}
+
+/**
+ * @summary Get a saved work item
+ */
+export const getRadarWorkItem = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<WorkItemResponse> => {
+
+  return customFetch<WorkItemResponse>(getGetRadarWorkItemUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRadarWorkItemQueryKey = (id: string,) => {
+    return [
+    `/api/v1/work-items/${id}`
+    ] as const;
+    }
+
+
+export const getGetRadarWorkItemQueryOptions = <TData = Awaited<ReturnType<typeof getRadarWorkItem>>, TError = ErrorType<unknown>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarWorkItem>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRadarWorkItemQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRadarWorkItem>>> = ({ signal }) => getRadarWorkItem(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRadarWorkItem>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRadarWorkItemQueryResult = NonNullable<Awaited<ReturnType<typeof getRadarWorkItem>>>
+export type GetRadarWorkItemQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get a saved work item
+ */
+
+export function useGetRadarWorkItem<TData = Awaited<ReturnType<typeof getRadarWorkItem>>, TError = ErrorType<unknown>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRadarWorkItem>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRadarWorkItemQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateRadarWorkItemUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/work-items/${id}`
+}
+
+/**
+ * @summary Complete, snooze, reschedule, dismiss or reopen saved work
+ */
+export const updateRadarWorkItem = async (id: string,
+    updateWorkItemInput: UpdateWorkItemInput, options?: Parameters<typeof customFetch>[1]): Promise<WorkItemResponse> => {
+
+  return customFetch<WorkItemResponse>(getUpdateRadarWorkItemUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateWorkItemInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateRadarWorkItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRadarWorkItem>>, TError,{id: string;data: BodyType<UpdateWorkItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRadarWorkItem>>, TError,{id: string;data: BodyType<UpdateWorkItemInput>}, TContext> => {
+
+const mutationKey = ['updateRadarWorkItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRadarWorkItem>>, {id: string;data: BodyType<UpdateWorkItemInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateRadarWorkItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRadarWorkItemMutationResult = NonNullable<Awaited<ReturnType<typeof updateRadarWorkItem>>>
+    export type UpdateRadarWorkItemMutationBody = BodyType<UpdateWorkItemInput>
+    export type UpdateRadarWorkItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Complete, snooze, reschedule, dismiss or reopen saved work
+ */
+export const useUpdateRadarWorkItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRadarWorkItem>>, TError,{id: string;data: BodyType<UpdateWorkItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRadarWorkItem>>,
+        TError,
+        {id: string;data: BodyType<UpdateWorkItemInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateRadarWorkItemMutationOptions(options));
+    }
+
+export const getListRadarEvidenceReviewsUrl = (id: string,
+    params?: ListRadarEvidenceReviewsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/companies/${id}/evidence-reviews?${stringifiedParams}` : `/api/v1/companies/${id}/evidence-reviews`
+}
+
+/**
+ * @summary List source observations and their review decisions
+ */
+export const listRadarEvidenceReviews = async (id: string,
+    params?: ListRadarEvidenceReviewsParams, options?: Parameters<typeof customFetch>[1]): Promise<EvidenceReviewListResponse> => {
+
+  return customFetch<EvidenceReviewListResponse>(getListRadarEvidenceReviewsUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRadarEvidenceReviewsQueryKey = (id: string,
+    params?: ListRadarEvidenceReviewsParams,) => {
+    return [
+    `/api/v1/companies/${id}/evidence-reviews`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListRadarEvidenceReviewsQueryOptions = <TData = Awaited<ReturnType<typeof listRadarEvidenceReviews>>, TError = ErrorType<unknown>>(id: string,
+    params?: ListRadarEvidenceReviewsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRadarEvidenceReviews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRadarEvidenceReviewsQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRadarEvidenceReviews>>> = ({ signal }) => listRadarEvidenceReviews(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRadarEvidenceReviews>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRadarEvidenceReviewsQueryResult = NonNullable<Awaited<ReturnType<typeof listRadarEvidenceReviews>>>
+export type ListRadarEvidenceReviewsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List source observations and their review decisions
+ */
+
+export function useListRadarEvidenceReviews<TData = Awaited<ReturnType<typeof listRadarEvidenceReviews>>, TError = ErrorType<unknown>>(
+ id: string,
+    params?: ListRadarEvidenceReviewsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRadarEvidenceReviews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRadarEvidenceReviewsQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReviewRadarEvidenceUrl = (id: string,) => {
+
+
+
+
+  return `/api/v1/companies/${id}/evidence-reviews`
+}
+
+/**
+ * @summary Review evidence and refresh the company score
+ */
+export const reviewRadarEvidence = async (id: string,
+    reviewEvidenceInput: ReviewEvidenceInput, options?: Parameters<typeof customFetch>[1]): Promise<ReviewEvidenceResponse> => {
+
+  return customFetch<ReviewEvidenceResponse>(getReviewRadarEvidenceUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewEvidenceInput)
+  }
+);}
+
+
+
+
+
+export const getReviewRadarEvidenceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewRadarEvidence>>, TError,{id: string;data: BodyType<ReviewEvidenceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewRadarEvidence>>, TError,{id: string;data: BodyType<ReviewEvidenceInput>}, TContext> => {
+
+const mutationKey = ['reviewRadarEvidence'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewRadarEvidence>>, {id: string;data: BodyType<ReviewEvidenceInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  reviewRadarEvidence(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewRadarEvidenceMutationResult = NonNullable<Awaited<ReturnType<typeof reviewRadarEvidence>>>
+    export type ReviewRadarEvidenceMutationBody = BodyType<ReviewEvidenceInput>
+    export type ReviewRadarEvidenceMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Review evidence and refresh the company score
+ */
+export const useReviewRadarEvidence = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewRadarEvidence>>, TError,{id: string;data: BodyType<ReviewEvidenceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewRadarEvidence>>,
+        TError,
+        {id: string;data: BodyType<ReviewEvidenceInput>},
+        TContext
+      > => {
+      return useMutation(getReviewRadarEvidenceMutationOptions(options));
+    }
 
 export const getHealthCheckUrl = () => {
 
