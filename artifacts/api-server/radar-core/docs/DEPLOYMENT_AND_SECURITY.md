@@ -70,12 +70,12 @@ With `DATABASE_URL` set the storage checks pass automatically: managed Postgres 
 
 For a production topology:
 
-1. Keep operational data in the managed Postgres database (point-in-time recovery and backups are the platform's; verify a restore before adding customer data).
+1. Keep operational data in the managed Postgres database (point-in-time recovery and backups are the platform's; rehearse a restore with `pnpm run db:restore-rehearsal` before adding customer data, see Backup and recovery).
 2. Apply schema changes by migrating the development database and publishing; watch `/api/ready` for `schema_out_of_date` after each publish.
 3. Let every instance run the in-process scheduler: due connectors are claimed through the shared database, so more than one host instance is safe (see "Scheduler and autoscale" below). Autoscale still only ticks while an instance is awake.
 4. Add shared rate limiting for cross-instance enforcement.
 5. Configure production secrets and explicit `ALLOWED_ORIGINS`.
-6. Verify `/api/ready`, tenant isolation and backup/restore before adding connector credentials.
+6. Verify `/api/ready`, tenant isolation and a dated backup/restore drill before adding connector credentials.
 
 ### Scheduler and autoscale
 
@@ -127,7 +127,7 @@ The scheduler does not start while `/api/ready` reports `schema_out_of_date`; mi
 - Enterprise SSO in front of Clerk for the operator console
 - Short-lived tenant sessions instead of distributing admin keys
 - Shared distributed rate limiting for multi-instance deployments
-- Encrypted disks, database point-in-time recovery and restore drills
+- Encrypted disks; a restore drill less than 30 days old (procedure and log: Backup and recovery)
 - Centralized logs, traces, uptime and connector alerts
 - Approved provider egress allowlist
 - Container/source/dependency scanning
@@ -147,9 +147,16 @@ The signed bytes are exactly `<timestamp>.<source>.<raw request body>`, where `s
 
 ## Backup and recovery
 
-Production data is in the Replit-managed Postgres database; use the platform's backup and point-in-time recovery, and restore into a scratch database to verify it at least monthly. Every table sits in the `radar` schema, so a schema-level dump (`pg_dump --schema=radar`) captures tenant, observation, evidence, scoring, outcome and audit tables together. For a self-hosted SQLite fallback, back up the volume with SQLite's online backup API or a coordinated snapshot; copying only the main file while WAL writes are active can be inconsistent.
+Production data is in the Replit-managed Postgres database, inside the `radar` schema, so one schema-level dump captures tenant, observation, evidence, scoring, outcome and audit tables together. Two recovery paths exist; both have been rehearsed with the procedure below and must be rehearsed again at least monthly and before every migration to a new database.
 
-Define recovery point and recovery time objectives before enabling first-party or paid provider connectors.
+### Recovery objectives
+
+| Objective | Target | How it is met |
+|---|---|---|
+| RPO (data loss) | ≤ 5 minutes | Production point-in-time restore (PITR): pick any timestamp inside the retention window (7 days by default; up to 28 days on Pro/Enterprise, configured in the production database settings). Scheduled daily backups (enable under **Settings → Advanced → Scheduled backups**) give a fallback restore point every 24 h; a logical dump taken with the script below is only as fresh as its last run. |
+| RTO (time to serve again) | ≤ 60 minutes | Platform restore is minutes; the rest is the verification below and, when the restore point predates a schema-changing publish, a republish. The drill measured dump → restore → verified API at 3 s for a 22-table, 62-row store; re-measure and update the log as data grows. |
+
+Do not enable first-party or paid provider connectors, or import customer data, until these objectives are accepted by the business owner and the drill log below has an entry newer than 30 days.
 
 ## Horizontal-scale gate
 
@@ -165,7 +172,7 @@ Operational data is already in managed Postgres. Move to durable workers and sha
 
 - `pnpm run verify:radar-core` (core syntax check and test suite) and `pnpm run typecheck` pass on the release commit
 - `/api/ready` is `200` and reports no critical issue after the publish
-- `/api/ready` reports `storage_mode: postgres` and a Postgres restore has been rehearsed
+- `/api/ready` reports `storage_mode: postgres` and `pnpm run db:restore-rehearsal` has passed within the last 30 days (entry in the drill log under Backup and recovery), with RPO/RTO accepted by the business owner
 - Authentication and least-privilege key lifecycle work
 - CORS contains only production origins
 - Webhook stale timestamp and bad signature both fail
@@ -179,3 +186,41 @@ Operational data is already in managed Postgres. Move to durable workers and sha
 The operator console (`artifacts/hookpoint-radar`) never handles API keys: it authenticates with a Clerk session cookie, and the host exchanges that session for a trusted principal inside the core. API keys exist only for direct integrations such as connector webhooks and CRM sync jobs. An enterprise deployment should put Clerk behind the customer's SSO provider and keep the private-workspace tenant model, or exchange the session for short-lived, tenant-scoped backend credentials.
 
 Set `TRUST_PROXY=true` only when the service is behind a trusted proxy that overwrites `X-Forwarded-For`. The Replit deployment proxy does; without the flag every request shares the socket address for rate limiting.
+
+
+### Drill log
+
+| Date | Source | Target | Result | Duration | Notes |
+|---|---|---|---|---|---|
+| 2026-09-04 | workspace `DATABASE_URL` (PostgreSQL 16.10, schema version 9, 22 tables, 62 rows, 1 tenant, 3 companies) | ephemeral local PostgreSQL 16.10; repeated into a scratch database on the same managed server | passed | 3 s | `/api/ready` 200, `storage_mode: postgres`, no issues; API listed 3/3 companies. Negative check: dropping one index from the restored copy made production mode answer `503 schema_out_of_date`, as intended. |
+
+For a self-hosted SQLite fallback, back up the volume with SQLite's online backup API or a coordinated snapshot; copying only the main file while WAL writes are active can be inconsistent. The drill script does not cover SQLite.
+
+### Path B – logical dump and restore (scratch verification, second database, or off-platform copy)
+
+`scripts/radar-restore-rehearsal.sh` (root: `pnpm run db:restore-rehearsal`) is the repeatable procedure. It never writes to the source and it fails loudly at the first step that does not hold:
+
+1. `pg_dump --schema=radar --format=custom --no-owner --no-privileges` of `SOURCE_DATABASE_URL` (default `DATABASE_URL`).
+2. `pg_restore --single-transaction --exit-on-error` into a scratch database: by default an ephemeral local Postgres it starts under `$TMPDIR` on a Unix socket (no port to collide with the workflows), or `SCRATCH_DATABASE_URL` when you provide one. The scratch database must be a different database from the source and must not already contain a `radar` schema, so the restore is always proven from nothing.
+3. Per-table row counts and the `schema_migrations` version must match the source (set `ALLOW_ROW_COUNT_DRIFT=true` only for a live source that is taking writes while the dump runs; the drift is then reported instead of failing).
+4. It builds the host and starts `dist/index.mjs` with `NODE_ENV=production` against the restored copy, with throwaway `ADMIN_API_KEY`/`HASH_SALT` written to the scratch copy only. The child process gets an allowlisted environment (`env -i`: database URL, the throwaway secrets, `SCHEDULER_ENABLED=false`, and the Clerk keys the host's session middleware insists on) rather than the caller's, so a production-derived copy with real connector rows can never reach a live provider with inherited credentials, and nothing mutates the copy while it is being checked. Production mode matters: the core does not repair the schema, it verifies it against `src/db/schema-manifest.js` exactly as the published service would, so a dump missing a table or index fails here with `schema_out_of_date` instead of being silently recreated.
+5. `/api/ready` must be `200` with `storage_mode: postgres` and the source's schema version, and `GET /api/v1/companies` for `DEFAULT_TENANT_ID` (bootstrap key) must report the same total as the restored `companies` table; other restored tenants are listed with their counts.
+6. The restored copy never outlives the run by default: the API is stopped, the local scratch Postgres is deleted or the restored `radar` schema is dropped from `SCRATCH_DATABASE_URL` (on success and on failure alike), and the dump is removed unless `DUMP_FILE` named it. `KEEP_SCRATCH=true` is the explicit opt-in to keep the restored copy (for inspection, or when the target is being seeded on purpose). A JSON report is written (`REPORT_FILE`, default inside the work directory; the path is printed); on failure the work directory with the API log is left in place. `scripts/radar-restore-rehearsal.test.sh` (`pnpm run db:restore-rehearsal:test`) proves these cleanup and retention semantics against a throwaway database on the workspace server.
+
+Use it in three situations:
+
+- **Monthly drill against the development database** (default invocation): proves the dump/restore path and that the checked-in manifest matches what a restore yields.
+- **Drill against production data**: run it from the workspace with `SOURCE_DATABASE_URL` set to the production connection string from the **Database** tool (production database → **Settings**). `pg_dump` must be at least the server's major version (the workspace ships PostgreSQL 16 client tools); the production connection string usually requires `sslmode=require`. Treat the dump as production data: leave `DUMP_FILE` unset so it is deleted, or store it encrypted.
+- **Moving or seeding a second database** (new region, provider migration, a customer's own Postgres): pass `SCRATCH_DATABASE_URL` pointing at the empty target **and `KEEP_SCRATCH=true`**, otherwise the verified copy is dropped again at the end; the same checks apply. Path B is also the fallback if the platform restore is unavailable, at an RPO equal to the age of the dump.
+
+### Path A – production point-in-time restore (managed database)
+
+1. Freeze writes: disable the connectors and stop operator activity (the API keeps answering, but every write after the chosen restore point is lost).
+2. In the **Database** tool select the production database and open its rollback/restore view. Choose the point in time just before the incident (or **Scheduled backups → View all backups → Restore** for a daily restore point). The platform switches the database to the restored data without deleting the current data; connected services briefly reconnect.
+3. Restart the API (redeploy, or publish again). Each autoscale instance holds one long-lived connection to the database, so do not rely on the reconnect.
+4. Check `/api/ready`:
+   - `200` with `storage_mode: postgres` and no critical issue → continue.
+   - `503 schema_out_of_date` → the restore point predates a publish that changed the schema. Production never runs DDL, so publish again so the development schema is copied across (or roll the code back to the checkpoint that matched the restore point and publish that). The manifest check is exactly what the drill script exercises in production mode.
+5. Sign in to the operator console and confirm the tenants and companies you expect; re-enable connectors last.
+
+Restoring the database does not restore the code and rolling the code back does not restore the database. When both must move, restore the database first, then roll back to the matching checkpoint and publish again.

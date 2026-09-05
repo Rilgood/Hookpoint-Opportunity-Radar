@@ -11,7 +11,9 @@
     "verify:api-server": "sh ./scripts/verify-api-server.sh",
     "verify:radar-core": "sh ./scripts/verify-radar-core.sh",
     "verify:browser-smoke": "flock /tmp/hookpoint-radar-generated-api.lock pnpm --filter @workspace/scripts run browser-smoke",
-    "verify:release": "sh ./scripts/verify-release.sh"
+    "verify:release": "sh ./scripts/verify-release.sh",
+    "db:restore-rehearsal": "bash ./scripts/radar-restore-rehearsal.sh",
+    "db:restore-rehearsal:test": "bash ./scripts/radar-restore-rehearsal.test.sh"
   },
   "private": true,
   "dependencies": {

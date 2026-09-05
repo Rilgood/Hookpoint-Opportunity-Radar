@@ -4,7 +4,7 @@
 - [Outcome cohort label time](outcome-cohort-label-time.md) — cohort/source/timing analytics must only use evidence observed before the earliest label; exclude, never zero.
 - [radar-core root vs config dir](radar-core-bundled-root.md) — host must set RADAR_CONFIG_DIR before importing the core; DB/.env paths are still bundle-root-relative.
 - [Browser e2e setup](browser-e2e-setup.md) — Clerk ticket sign-in, system Chromium, outputDir outside the Vite root, and the isolated localhost-proxy release gate (Clerk dev accepts localhost origins).
-- [Scheduler live verification](scheduler-live-verification.md) — GDELT 429s the sandbox; prove scheduling via run rows/backoff, temp API key for curl, WAL-copy and async-guard pitfalls.
+- [Scheduler live verification](scheduler-live-verification.md) — providers 429 the sandbox; judge scheduling by run rows/backoff, and clear async in-flight guards in `.finally`.
 - [Calibration evaluation contract](calibration-evaluation-contract.md) — evaluate guardrail outcomes are 200 "blocked" bodies with counts, not error codes; no holdout_unavailable exists server-side.
 - [Radar Postgres storage](radar-postgres-storage.md) — sync worker-thread bridge to Postgres, tables in the `radar` schema because drizzle push wipes `public`; keep SQL portable across both engines.
 - [Connector run leases](connector-run-leases.md) — all connector runs go through the DB lease; closing writes guarded by lease_token; expired leases cannot be renewed by their holder.
@@ -12,3 +12,4 @@
 - [api-server test suite](api-server-test-suite.md) — env in setupFiles, only getAuth mocked, fetch against an ephemeral port; runs without Clerk secrets or DATABASE_URL.
 - [tsc --build stale tsbuildinfo](tsc-build-stale-tsbuildinfo.md) — deleting lib dist alone does not trigger a rebuild; drop the sibling tsbuildinfo first or downstream typechecks fail with TS6305.
 - [Connector input validation contract](connector-input-validation.md) — adapter input rules live in one validateInput hook used by both collect() and the schedule save path; never inline them in collect().
+- [Radar restore drill](radar-restore-drill.md) — the rehearsal must restore into an empty scratch DB and run the API in production mode, or a broken dump passes silently.
