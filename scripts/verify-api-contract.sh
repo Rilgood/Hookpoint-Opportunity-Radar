@@ -19,4 +19,20 @@ if [ -n "$(git status --porcelain -- $generated_paths)" ]; then
   exit 1
 fi
 
+# The web app tsconfig uses a project reference to lib/api-client-react, and
+# `tsc -p --noEmit` resolves referenced projects through their emitted
+# declaration files (dist/, which is gitignored). Build the shared libs first
+# so the typecheck is reliable on a fresh checkout, not just a workspace where
+# dist/ happens to exist (mirrors scripts/verify-api-server.sh).
+#
+# `tsc --build` decides whether a lib is up to date from its tsbuildinfo alone;
+# it does not notice when dist/ was deleted out from under a still-present
+# tsbuildinfo and would skip the emit. Drop the stale tsbuildinfo in that case
+# so the libs are actually rebuilt.
+for lib_dir in lib/*/; do
+  if [ -f "${lib_dir}tsconfig.tsbuildinfo" ] && [ ! -d "${lib_dir}dist" ]; then
+    rm -f "${lib_dir}tsconfig.tsbuildinfo"
+  fi
+done
+pnpm run typecheck:libs
 pnpm --filter @workspace/hookpoint-radar run typecheck

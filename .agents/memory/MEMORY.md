@@ -10,3 +10,4 @@
 - [Connector run leases](connector-run-leases.md) — all connector runs go through the DB lease; closing writes guarded by lease_token; expired leases cannot be renewed by their holder.
 - [Radar schema and the publish flow](radar-schema-publish-flow.md) — production never runs DDL; regenerate the manifest and migrate the dev DB before publishing or readiness 503s with schema_out_of_date.
 - [api-server test suite](api-server-test-suite.md) — env in setupFiles, only getAuth mocked, fetch against an ephemeral port; runs without Clerk secrets or DATABASE_URL.
+- [tsc --build stale tsbuildinfo](tsc-build-stale-tsbuildinfo.md) — deleting lib dist alone does not trigger a rebuild; drop the sibling tsbuildinfo first or downstream typechecks fail with TS6305.
