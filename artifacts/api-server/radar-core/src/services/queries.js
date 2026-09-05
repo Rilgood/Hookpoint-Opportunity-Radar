@@ -1,4 +1,5 @@
 import { AppError, daysAgo, escapeCsv, json } from '../lib.js';
+import { runTrigger } from './connector-schedule.js';
 import { config } from '../config.js';
 
 export function dashboardSummary(db, tenantId) {
@@ -118,11 +119,23 @@ export function listSignals(db, tenantId, query = {}) {
 }
 
 export function listConnectors(db, tenantId) {
+  const latestRuns = new Map(latestConnectorRuns(db, tenantId).map((run) => [run.connector_key, run]));
   return db.all(`SELECT c.*, (SELECT COUNT(*) FROM connector_runs r WHERE r.tenant_id=c.tenant_id AND r.connector_key=c.connector_key) run_count
     FROM connectors c WHERE c.tenant_id=? ORDER BY c.configured DESC, c.category, c.label`, [tenantId]).map((row) => {
       const { config_json: configJson, ...connector } = row;
-      return { ...connector, config: json(configJson), enabled: Boolean(row.enabled), configured: Boolean(row.configured) };
+      return { ...connector, config: json(configJson), enabled: Boolean(row.enabled), configured: Boolean(row.configured),
+        consecutive_failures: Number(row.consecutive_failures || 0), last_run: latestRuns.get(row.connector_key) ?? null };
     });
+}
+
+/** The most recent run of every connector in the tenant (one row per connector). */
+function latestConnectorRuns(db, tenantId) {
+  return db.all(`SELECT r.id, r.connector_key, r.status, r.started_at, r.finished_at, r.duration_ms, r.records_seen, r.records_inserted,
+      r.records_rejected, r.signals_created, r.error_message, r.metadata_json
+    FROM connector_runs r WHERE r.tenant_id=? AND NOT EXISTS (
+      SELECT 1 FROM connector_runs newer WHERE newer.tenant_id=r.tenant_id AND newer.connector_key=r.connector_key
+        AND (newer.started_at>r.started_at OR (newer.started_at=r.started_at AND newer.id>r.id)))`, [tenantId])
+    .map(({ metadata_json: metadataJson, ...run }) => ({ ...run, trigger: runTrigger(json(metadataJson)) }));
 }
 
 export function exportCompaniesCsv(db, tenantId, query = {}) {
@@ -213,10 +226,14 @@ export function reviewQueue(db, tenantId, query = {}) {
 
 export function connectorRuns(db, tenantId, query = {}) {
   const limit = positiveInteger(query.limit, 50, 200);
-  return db.all(`SELECT * FROM connector_runs WHERE tenant_id=? ORDER BY started_at DESC LIMIT ?`, [tenantId, limit])
+  const where = ['tenant_id=?'];
+  const params = [tenantId];
+  if (query.connector_key) { where.push('connector_key=?'); params.push(String(query.connector_key).slice(0, 100)); }
+  return db.all(`SELECT * FROM connector_runs WHERE ${where.join(' AND ')} ORDER BY started_at DESC, id DESC LIMIT ?`, [...params, limit])
     .map((row) => {
       const { provider_cursor_json: cursorJson, metadata_json: metadataJson, cursor_json: legacyCursorJson, ...run } = row;
-      return { ...run, cursor: json(cursorJson, null), metadata: json(metadataJson) };
+      const metadata = json(metadataJson);
+      return { ...run, trigger: runTrigger(metadata), cursor: json(cursorJson, null), metadata };
     });
 }
 

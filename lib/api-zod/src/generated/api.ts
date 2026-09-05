@@ -60,7 +60,6 @@ export const listRadarCompaniesQueryMinScoreMax = 100;
 export const listRadarCompaniesQueryLimitMax = 200;
 
 
-
 export const ListRadarCompaniesQueryParams = zod.object({
   "tier": zod.enum(['hot', 'warm', 'watch', 'cold', 'suppressed']).optional(),
   "q": zod.coerce.string().optional(),
@@ -266,7 +265,6 @@ export const getRadarCompanyInsightsResponseDataWhyNowDriversItemShareOfPositive
 export const getRadarCompanyInsightsResponseDataWhyNowDriversItemShareOfPositiveContributionMax = 100;
 
 
-
 export const GetRadarCompanyInsightsResponse = zod.object({
   "data": zod.object({
   "company_id": zod.string(),
@@ -467,8 +465,6 @@ export const SeparateRadarCompanyIdentityParams = zod.object({
 })
 
 
-
-
 export const SeparateRadarCompanyIdentityBody = zod.object({
   "name": zod.string(),
   "alias_ids": zod.array(zod.string()).min(1),
@@ -508,7 +504,6 @@ export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsItemNegati
 
 export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMin = 4;
 export const getRadarOutcomeAnalyticsResponseDataCalibrationScoreBandsMax = 4;
-
 
 
 export const GetRadarOutcomeAnalyticsResponse = zod.object({
@@ -833,7 +828,6 @@ export const ingestRadarObservationsBodyRecordsItemConfidenceMax = 1;
 export const ingestRadarObservationsBodyRecordsMax = 5000;
 
 
-
 export const IngestRadarObservationsBody = zod.object({
   "records": zod.array(zod.object({
   "source": zod.string(),
@@ -876,7 +870,6 @@ export const IngestRadarObservationsResponse = zod.object({
  * @summary List inferred opportunity signals
  */
 export const listRadarSignalsQueryLimitMax = 200;
-
 
 
 export const ListRadarSignalsQueryParams = zod.object({
@@ -933,8 +926,33 @@ export const ListRadarConnectorsResponse = zod.object({
   "status": zod.string(),
   "run_count": zod.number(),
   "last_run_at": zod.coerce.date().nullish(),
+  "next_run_at": zod.coerce.date().nullish(),
+  "backoff_until": zod.coerce.date().nullish(),
+  "consecutive_failures": zod.number().optional(),
   "last_error": zod.string().nullish(),
-  "config": zod.record(zod.string(), zod.unknown()).optional()
+  "config": zod.record(zod.string(), zod.unknown()).optional(),
+  "last_run": zod.union([zod.object({
+  "id": zod.string(),
+  "connector_key": zod.string(),
+  "status": zod.string(),
+  "trigger": zod.union([zod.literal('scheduled'),zod.literal('manual'),zod.literal(null)]).nullable().describe('Who started the run. Null for runs recorded before the trigger was tracked.'),
+  "started_at": zod.coerce.date(),
+  "finished_at": zod.coerce.date().nullish(),
+  "duration_ms": zod.number().nullish(),
+  "records_seen": zod.number().optional(),
+  "records_inserted": zod.number().optional(),
+  "records_rejected": zod.number().optional(),
+  "signals_created": zod.number().optional(),
+  "error_message": zod.string().nullish()
+}),zod.null()]).optional(),
+  "schedule": zod.object({
+  "state": zod.enum(['push', 'adapter_pending', 'needs_configuration', 'disabled', 'running', 'backoff', 'input_rejected', 'manual', 'due', 'waiting']),
+  "reason": zod.string(),
+  "will_run": zod.boolean().describe('True when the scheduler will pick the connector up without operator action.'),
+  "next_run_at": zod.coerce.date().nullable(),
+  "backoff_until": zod.coerce.date().nullable(),
+  "consecutive_failures": zod.number()
+}).optional().describe('Why a connector\'s cadence will or will not run next. Derived by the server from the persisted connector state.')
 })),
   "meta": zod.object({
   "request_id": zod.string(),
@@ -942,7 +960,11 @@ export const ListRadarConnectorsResponse = zod.object({
 })
 })
 
-
+/**
+ * Each run records whether the scheduler or an operator started it, so scheduled and manual runs can be told apart.
+ * @summary Recent connector runs, newest first (administrator only)
+ */
+export const listRadarConnectorRunsQueryLimitMax = 200;
 /**
  * @summary Enable or disable a configured connector
  */
@@ -969,8 +991,33 @@ export const UpdateRadarConnectorResponse = zod.object({
   "status": zod.string(),
   "run_count": zod.number(),
   "last_run_at": zod.coerce.date().nullish(),
+  "next_run_at": zod.coerce.date().nullish(),
+  "backoff_until": zod.coerce.date().nullish(),
+  "consecutive_failures": zod.number().optional(),
   "last_error": zod.string().nullish(),
-  "config": zod.record(zod.string(), zod.unknown()).optional()
+  "config": zod.record(zod.string(), zod.unknown()).optional(),
+  "last_run": zod.union([zod.object({
+  "id": zod.string(),
+  "connector_key": zod.string(),
+  "status": zod.string(),
+  "trigger": zod.union([zod.literal('scheduled'),zod.literal('manual'),zod.literal(null)]).nullable().describe('Who started the run. Null for runs recorded before the trigger was tracked.'),
+  "started_at": zod.coerce.date(),
+  "finished_at": zod.coerce.date().nullish(),
+  "duration_ms": zod.number().nullish(),
+  "records_seen": zod.number().optional(),
+  "records_inserted": zod.number().optional(),
+  "records_rejected": zod.number().optional(),
+  "signals_created": zod.number().optional(),
+  "error_message": zod.string().nullish()
+}),zod.null()]).optional(),
+  "schedule": zod.object({
+  "state": zod.enum(['push', 'adapter_pending', 'needs_configuration', 'disabled', 'running', 'backoff', 'input_rejected', 'manual', 'due', 'waiting']),
+  "reason": zod.string(),
+  "will_run": zod.boolean().describe('True when the scheduler will pick the connector up without operator action.'),
+  "next_run_at": zod.coerce.date().nullable(),
+  "backoff_until": zod.coerce.date().nullable(),
+  "consecutive_failures": zod.number()
+}).optional().describe('Why a connector\'s cadence will or will not run next. Derived by the server from the persisted connector state.')
 }),
   "meta": zod.object({
   "request_id": zod.string(),
@@ -1031,7 +1078,6 @@ export const runRadarConnectorBodyToMax = 10;
 export const runRadarConnectorBodyLimitMax = 100;
 
 
-
 export const RunRadarConnectorBody = zod.object({
   "company": zod.object({
   "name": zod.string().max(runRadarConnectorBodyCompanyNameMax).optional(),
@@ -1061,7 +1107,6 @@ export const RunRadarConnectorBody = zod.object({
 export const runRadarConnectorResponseDataErrorsItemIndexMin = 0;
 
 export const runRadarConnectorResponseDataErrorsMax = 100;
-
 
 
 export const RunRadarConnectorResponse = zod.object({
@@ -1143,7 +1188,6 @@ export const GetRadarDataQualityResponse = zod.object({
 export const listRadarReviewQueueQueryLimitMax = 200;
 
 
-
 export const ListRadarReviewQueueQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listRadarReviewQueueQueryLimitMax).optional()
 })
@@ -1169,3 +1213,31 @@ export const ListRadarReviewQueueResponse = zod.object({
 })
 
 
+export const ListRadarConnectorRunsQueryParams = zod.object({
+  "connector_key": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().min(1).max(listRadarConnectorRunsQueryLimitMax).optional()
+})
+
+export const ListRadarConnectorRunsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.string(),
+  "connector_key": zod.string(),
+  "status": zod.string(),
+  "trigger": zod.union([zod.literal('scheduled'),zod.literal('manual'),zod.literal(null)]).nullable().describe('Who started the run. Null for runs recorded before the trigger was tracked.'),
+  "started_at": zod.coerce.date(),
+  "finished_at": zod.coerce.date().nullish(),
+  "duration_ms": zod.number().nullish(),
+  "records_seen": zod.number().optional(),
+  "records_inserted": zod.number().optional(),
+  "records_rejected": zod.number().optional(),
+  "signals_created": zod.number().optional(),
+  "error_message": zod.string().nullish()
+}).and(zod.object({
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "cursor": zod.unknown().nullish()
+}))),
+  "meta": zod.object({
+  "request_id": zod.string(),
+  "duration_ms": zod.number()
+})
+})

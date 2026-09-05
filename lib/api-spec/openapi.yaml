@@ -323,6 +323,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConnectorsResponse"
+  /v1/connectors/runs:
+    get:
+      operationId: listRadarConnectorRuns
+      tags: [radar]
+      summary: Recent connector runs, newest first (administrator only)
+      description: Each run records whether the scheduler or an operator started it, so scheduled and manual runs can be told apart.
+      parameters:
+        - in: query
+          name: connector_key
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: number
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Connector run history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorRunsResponse"
   /v1/connectors/{key}:
     patch:
       operationId: updateRadarConnector
@@ -1282,11 +1306,100 @@ components:
         last_run_at:
           type: ["string", "null"]
           format: date-time
+        next_run_at:
+          type: ["string", "null"]
+          format: date-time
+        backoff_until:
+          type: ["string", "null"]
+          format: date-time
+        consecutive_failures:
+          type: number
         last_error:
           type: ["string", "null"]
         config:
           type: object
           additionalProperties: true
+        last_run:
+          oneOf:
+            - $ref: "#/components/schemas/ConnectorRunSummary"
+            - type: "null"
+        schedule:
+          $ref: "#/components/schemas/ConnectorSchedule"
+    ConnectorSchedule:
+      type: object
+      description: Why a connector's cadence will or will not run next. Derived by the server from the persisted connector state.
+      required: [state, reason, will_run, next_run_at, backoff_until, consecutive_failures]
+      properties:
+        state:
+          type: string
+          enum: [push, adapter_pending, needs_configuration, disabled, running, backoff, input_rejected, manual, due, waiting]
+        reason:
+          type: string
+        will_run:
+          type: boolean
+          description: True when the scheduler will pick the connector up without operator action.
+        next_run_at:
+          type: ["string", "null"]
+          format: date-time
+        backoff_until:
+          type: ["string", "null"]
+          format: date-time
+        consecutive_failures:
+          type: number
+    ConnectorRunTrigger:
+      type: ["string", "null"]
+      enum: [scheduled, manual, null]
+      description: Who started the run. Null for runs recorded before the trigger was tracked.
+    ConnectorRunSummary:
+      type: object
+      required: [id, connector_key, status, started_at, trigger]
+      properties:
+        id:
+          type: string
+        connector_key:
+          type: string
+        status:
+          type: string
+        trigger:
+          $ref: "#/components/schemas/ConnectorRunTrigger"
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: ["string", "null"]
+          format: date-time
+        duration_ms:
+          type: ["number", "null"]
+        records_seen:
+          type: number
+        records_inserted:
+          type: number
+        records_rejected:
+          type: number
+        signals_created:
+          type: number
+        error_message:
+          type: ["string", "null"]
+    ConnectorRun:
+      allOf:
+        - $ref: "#/components/schemas/ConnectorRunSummary"
+        - type: object
+          properties:
+            metadata:
+              type: object
+              additionalProperties: true
+            cursor:
+              nullable: true
+    ConnectorRunsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorRun"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
     ConnectorsResponse:
       type: object
       required: [data, meta]

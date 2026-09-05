@@ -13,3 +13,4 @@
 - [tsc --build stale tsbuildinfo](tsc-build-stale-tsbuildinfo.md) — deleting lib dist alone does not trigger a rebuild; drop the sibling tsbuildinfo first or downstream typechecks fail with TS6305.
 - [Connector input validation contract](connector-input-validation.md) — adapter input rules live in one validateInput hook used by both collect() and the schedule save path; never inline them in collect().
 - [Radar restore drill](radar-restore-drill.md) — the rehearsal must restore into an empty scratch DB and run the API in production mode, or a broken dump passes silently.
+- [Connector status values and the console](connector-status-values.md) — new statuses must join bootstrap's preserved list; schedule state is derived server-side, console verified via Playwright sign-in.

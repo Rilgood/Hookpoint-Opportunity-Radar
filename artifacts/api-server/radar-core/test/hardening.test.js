@@ -15,7 +15,8 @@ import { config } from '../src/config.js';
 import { scoringConfig } from '../src/services/catalog.js';
 import { createApp } from '../src/app.js';
 import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
-import { companyDetail, exportCompaniesCsv, ingestionRejections } from '../src/services/queries.js';
+import { companyDetail, connectorRuns, exportCompaniesCsv, ingestionRejections, listConnectors } from '../src/services/queries.js';
+import { describeConnectorSchedule } from '../src/services/connector-schedule.js';
 import { deleteCompany, updateCompany } from '../src/services/entities.js';
 import { runConnector, setConnectorEnabled, startScheduler } from '../src/services/connector-runner.js';
 import { recoverExpiredLeases } from '../src/services/connector-leases.js';
@@ -25,7 +26,7 @@ import { consumeWebhookReceipt } from '../src/services/webhooks.js';
 import { BaseConnector } from '../src/connectors/base.js';
 import { GdeltConnector } from '../src/connectors/news.js';
 import { authenticate, setTrustedPrincipal } from '../src/http/security.js';
-import { id, sha256 } from '../src/lib.js';
+import { id, nowIso, sha256 } from '../src/lib.js';
 
 function setup() { const db = openTestDatabase(); bootstrap(db); return db; }
 
@@ -116,9 +117,9 @@ async function startApp(db) {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
   return {
-    request(path, { headers = {}, body } = {}) {
+    request(path, { method = 'POST', headers = {}, body } = {}) {
       return fetch(`http://127.0.0.1:${port}${path}`, {
-        method: 'POST',
+        method,
         headers: { 'content-type': 'application/json', ...headers },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
@@ -748,6 +749,124 @@ test('scheduler defers a cadence whose schedule input is rejected instead of ret
     if (stop) await stop();
     db.close();
   }
+});
+
+test('a rejected schedule input is visible on the connector as schedule_rejected until the next run', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const events = [];
+  let stop;
+  try {
+    // Save-time validation refuses company-less GDELT input, so model a cadence persisted
+    // before the adapter tightened its rules by writing the stored input directly.
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Target' } } });
+    db.run("UPDATE connectors SET config_json=? WHERE tenant_id=? AND connector_key='gdelt'",
+      [JSON.stringify({ ...JSON.parse(db.get("SELECT config_json FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]).config_json), scheduleInput: { query: 'no company here' } }), config.defaultTenantId]);
+    stop = startScheduler(db, 60_000, { onEvent: (event) => events.push(event) });
+    await waitFor(() => events.some((event) => event.event === 'scheduler_tick'));
+    await stop();
+    stop = null;
+
+    const connector = listConnectors(db, config.defaultTenantId).find((item) => item.connector_key === 'gdelt');
+    assert.equal(connector.status, 'schedule_rejected');
+    assert.ok(connector.last_error, 'the rejection message is kept on the connector');
+    assert.equal(connector.last_run.status, 'failed');
+    assert.equal(connector.last_run.trigger, 'scheduled', 'the failed run is attributed to the scheduler');
+    const schedule = describeConnectorSchedule({ ...connector, implemented: true });
+    assert.equal(schedule.state, 'input_rejected');
+    assert.equal(schedule.will_run, false);
+    assert.match(schedule.reason, /schedule input was rejected/);
+
+    // Listing the catalog again (which resyncs connector rows) must not erase the marker.
+    const apiKey = `test_${id('key')}`;
+    db.run(`INSERT INTO api_keys(id, tenant_id, name, key_prefix, key_hash, scopes, created_at) VALUES (?, ?, ?, ?, ?, 'admin', ?)`,
+      ['key_schedule_admin', config.defaultTenantId, 'Schedule API key', apiKey.slice(0, 16), sha256(apiKey), nowIso()]);
+    const app = await startApp(db);
+    try {
+      const listed = await app.request('/api/v1/connectors', { method: 'GET', headers: { 'x-api-key': apiKey } });
+      assert.equal(listed.status, 200);
+      const gdelt = (await listed.json()).data.find((item) => item.connector_key === 'gdelt');
+      assert.equal(gdelt.status, 'schedule_rejected');
+      assert.equal(gdelt.schedule.state, 'input_rejected');
+      assert.equal(gdelt.schedule.will_run, false);
+      assert.equal(gdelt.last_run.trigger, 'scheduled');
+      const history = await app.request('/api/v1/connectors/runs?connector_key=gdelt', { method: 'GET', headers: { 'x-api-key': apiKey } });
+      assert.equal(history.status, 200);
+      assert.deepEqual((await history.json()).data.map((run) => [run.connector_key, run.status, run.trigger]), [['gdelt', 'failed', 'scheduled']]);
+    } finally {
+      await app.close();
+    }
+
+    // Fixing the input and re-enabling clears the rejection and makes the cadence due again.
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Fixed' } } });
+    const fixed = listConnectors(db, config.defaultTenantId).find((item) => item.connector_key === 'gdelt');
+    assert.equal(fixed.status, 'ready');
+    assert.equal(describeConnectorSchedule({ ...fixed, implemented: true }).state, 'due');
+  } finally {
+    if (stop) await stop();
+    db.close();
+  }
+});
+
+test('connector runs record whether the scheduler or an operator started them', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  GdeltConnector.prototype.run = async () => ({ records: [], normalizationErrors: [], cursor: null, usage: {} });
+  const events = [];
+  let stop;
+  try {
+    await runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'Manual Co' } });
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Scheduled Co' } } });
+    stop = startScheduler(db, 60_000, { onEvent: (event) => events.push(event) });
+    await waitFor(() => events.some((event) => event.event === 'scheduled_connector_run'));
+    await stop();
+    stop = null;
+
+    const runs = connectorRuns(db, config.defaultTenantId, { connector_key: 'gdelt' });
+    assert.deepEqual(runs.map((run) => run.trigger), ['scheduled', 'manual'], 'newest first, each attributed to its trigger');
+    assert.deepEqual(runs.map((run) => run.metadata.trigger), ['scheduled', 'manual']);
+    assert.equal(connectorRuns(db, config.defaultTenantId, { connector_key: 'sec_edgar' }).length, 0, 'connector_key filters the history');
+
+    const connector = listConnectors(db, config.defaultTenantId).find((item) => item.connector_key === 'gdelt');
+    assert.equal(connector.last_run.trigger, 'scheduled');
+    assert.equal(connector.last_run.status, 'succeeded');
+    const schedule = describeConnectorSchedule({ ...connector, implemented: true });
+    assert.equal(schedule.state, 'waiting');
+    assert.equal(schedule.next_run_at, connector.next_run_at);
+
+    // Runs recorded before the trigger flag existed are reported as unknown, never guessed.
+    db.run("UPDATE connector_runs SET metadata_json='{}' WHERE connector_key='gdelt'");
+    assert.deepEqual(connectorRuns(db, config.defaultTenantId, { connector_key: 'gdelt' }).map((run) => run.trigger), [null, null]);
+  } finally {
+    if (stop) await stop();
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('describeConnectorSchedule explains every reason a cadence is not running', () => {
+  const now = '2026-09-04T12:00:00.000Z';
+  const base = { label: 'GDELT', mode: 'pull', cadence: 'hourly', implemented: true, configured: true, enabled: true, status: 'ready',
+    next_run_at: '2026-09-04T13:00:00.000Z', backoff_until: null, consecutive_failures: 0, last_error: null };
+  assert.equal(describeConnectorSchedule({ ...base, mode: 'push' }, now).state, 'push');
+  assert.equal(describeConnectorSchedule({ ...base, implemented: false }, now).state, 'adapter_pending');
+  assert.equal(describeConnectorSchedule({ ...base, configured: false }, now).state, 'needs_configuration');
+  assert.equal(describeConnectorSchedule({ ...base, enabled: false }, now).state, 'disabled');
+  assert.equal(describeConnectorSchedule({ ...base, status: 'running' }, now).state, 'running');
+  const backoff = describeConnectorSchedule({ ...base, status: 'error', consecutive_failures: 3, backoff_until: '2026-09-04T16:00:00.000Z' }, now);
+  assert.equal(backoff.state, 'backoff');
+  assert.equal(backoff.will_run, true);
+  assert.match(backoff.reason, /3 consecutive failures/);
+  assert.match(backoff.reason, /2026-09-04T16:00:00.000Z/);
+  const expiredBackoff = describeConnectorSchedule({ ...base, status: 'error', consecutive_failures: 3, backoff_until: '2026-09-04T11:00:00.000Z', next_run_at: '2026-09-04T11:00:00.000Z' }, now);
+  assert.equal(expiredBackoff.state, 'due');
+  assert.match(expiredBackoff.reason, /while the service is active/);
+  assert.equal(describeConnectorSchedule({ ...base, cadence: 'manual', next_run_at: null }, now).state, 'manual');
+  const waiting = describeConnectorSchedule(base, now);
+  assert.equal(waiting.state, 'waiting');
+  assert.match(waiting.reason, /hourly cadence/);
+  assert.equal(describeConnectorSchedule({ ...base, next_run_at: null }, now).state, 'due');
 });
 
 test('stopping the scheduler waits for the in-flight run and starts nothing new', async () => {

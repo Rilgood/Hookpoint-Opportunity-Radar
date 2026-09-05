@@ -50,7 +50,7 @@ export function syncConnectorCatalog(db, tenantId, now = nowIso()) {
        `UPDATE connectors SET label=?, category=?, provider=?, mode=?, cadence=?, configured=?,
         enabled=CASE WHEN ?=0 THEN 0 ELSE enabled END,
        status=CASE WHEN ?=0 THEN 'needs_configuration' WHEN enabled=0 THEN 'disabled'
-         WHEN status IN ('error','degraded','running') THEN status ELSE 'ready' END, updated_at=?
+         WHEN status IN ('error','degraded','running','schedule_rejected') THEN status ELSE 'ready' END, updated_at=?
        WHERE tenant_id = ? AND connector_key = ?`,
       [item.label, item.category, item.provider, item.mode, item.cadence, configured ? 1 : 0,
         configured ? 1 : 0, configured ? 1 : 0, now, tenantId, item.key]

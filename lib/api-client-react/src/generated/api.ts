@@ -28,6 +28,7 @@ import type {
   ConnectorResponse,
   ConnectorRunInput,
   ConnectorRunResponse,
+  ConnectorRunsResponse,
   ConnectorUpdate,
   ConnectorsResponse,
   DashboardResponse,
@@ -41,6 +42,7 @@ import type {
   IdentitySeparationResponse,
   IngestionResponse,
   ListRadarCompaniesParams,
+  ListRadarConnectorRunsParams,
   ListRadarReviewQueueParams,
   ListRadarSignalsParams,
   ObservationBatchInput,
@@ -1278,6 +1280,91 @@ export function useListRadarConnectors<TData = Awaited<ReturnType<typeof listRad
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListRadarConnectorsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListRadarConnectorRunsUrl = (params?: ListRadarConnectorRunsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/connectors/runs?${stringifiedParams}` : `/api/v1/connectors/runs`
+}
+
+/**
+ * Each run records whether the scheduler or an operator started it, so scheduled and manual runs can be told apart.
+ * @summary Recent connector runs, newest first (administrator only)
+ */
+export const listRadarConnectorRuns = async (params?: ListRadarConnectorRunsParams, options?: Parameters<typeof customFetch>[1]): Promise<ConnectorRunsResponse> => {
+
+  return customFetch<ConnectorRunsResponse>(getListRadarConnectorRunsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRadarConnectorRunsQueryKey = (params?: ListRadarConnectorRunsParams,) => {
+    return [
+    `/api/v1/connectors/runs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListRadarConnectorRunsQueryOptions = <TData = Awaited<ReturnType<typeof listRadarConnectorRuns>>, TError = ErrorType<unknown>>(params?: ListRadarConnectorRunsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRadarConnectorRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRadarConnectorRunsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRadarConnectorRuns>>> = ({ signal }) => listRadarConnectorRuns(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRadarConnectorRuns>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRadarConnectorRunsQueryResult = NonNullable<Awaited<ReturnType<typeof listRadarConnectorRuns>>>
+export type ListRadarConnectorRunsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Recent connector runs, newest first (administrator only)
+ */
+
+export function useListRadarConnectorRuns<TData = Awaited<ReturnType<typeof listRadarConnectorRuns>>, TError = ErrorType<unknown>>(
+ params?: ListRadarConnectorRunsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRadarConnectorRuns>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRadarConnectorRunsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

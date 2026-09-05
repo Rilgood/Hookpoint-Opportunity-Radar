@@ -26,8 +26,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { humanizeLabel } from "@/lib/utils";
 import { CheckCircle2, Play, Calendar, AlertCircle } from "lucide-react";
+import { ConnectorRunHistory } from "@/components/sources/connector-run-history";
 import {
   getListRadarConnectorsQueryKey,
+  getListRadarConnectorRunsQueryKey,
   getGetRadarDashboardQueryKey,
   getListRadarCompaniesQueryKey,
   getListRadarSignalsQueryKey,
@@ -149,6 +151,7 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
 
         // Invalidate queries so new data appears
         queryClient.invalidateQueries({ queryKey: getListRadarConnectorsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListRadarConnectorRunsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetRadarDashboardQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListRadarCompaniesQueryKey() });
         queryClient.invalidateQueries({ queryKey: getListRadarSignalsQueryKey() });
@@ -157,6 +160,9 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
       },
       onError: (error) => {
         const err = error as { data?: { error?: { message?: string } } };
+        // A failed run is still a run: refresh the history and the connector state it changed.
+        queryClient.invalidateQueries({ queryKey: getListRadarConnectorsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListRadarConnectorRunsQueryKey() });
         toast({
           title: "Run failed",
           description: err?.data?.error?.message || "An unexpected error occurred while running.",
@@ -242,7 +248,7 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Configure {connector.label}</DialogTitle>
           <DialogDescription>
@@ -478,6 +484,12 @@ export function ConnectorDialog({ connector, open, onOpenChange }: ConnectorDial
               )}
             </form>
           </Form>
+        )}
+
+        {!isSuccessRun && !isPush && (
+          <div className="mt-2 border-t border-border/60 pt-4">
+            <ConnectorRunHistory connectorKey={key} enabled={open} />
+          </div>
         )}
 
         {!isSuccessRun && (

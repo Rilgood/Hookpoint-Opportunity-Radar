@@ -6,6 +6,8 @@
  * OpenAPI spec version: 1.1.0
  */
 import type { ConnectorConfig } from './connectorConfig';
+import type { ConnectorRunSummary } from './connectorRunSummary';
+import type { ConnectorSchedule } from './connectorSchedule';
 
 export interface Connector {
   connector_key: string;
@@ -22,6 +24,13 @@ export interface Connector {
   /** @nullable */
   last_run_at?: Date | null;
   /** @nullable */
+  next_run_at?: Date | null;
+  /** @nullable */
+  backoff_until?: Date | null;
+  consecutive_failures?: number;
+  /** @nullable */
   last_error?: string | null;
   config?: ConnectorConfig;
+  last_run?: ConnectorRunSummary | null;
+  schedule?: ConnectorSchedule;
 }

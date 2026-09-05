@@ -8,6 +8,7 @@ import { rescoreAll, rescoreCompany, rescoreDueCompanies } from './services/sign
 import { scoringConfig, signalCatalog } from './services/catalog.js';
 import { implementedConnectorKeys } from './connectors/index.js';
 import { runConnector, setConnectorEnabled } from './services/connector-runner.js';
+import { describeConnectorSchedule } from './services/connector-schedule.js';
 import { recordAudit } from './services/audit.js';
 import { createApiKey, listApiKeys, revokeApiKey } from './services/api-keys.js';
 import { consumeWebhookReceipt, verifyWebhook } from './services/webhooks.js';
@@ -122,7 +123,11 @@ export function createApp(db, { serveStaticAssets = true } = {}) {
   router.get('/api/v1/signal-catalog', async () => signalCatalog);
   router.get('/api/v1/connectors', async ({ auth }) => {
     syncConnectorCatalog(db, auth.tenantId);
-    return listConnectors(db, auth.tenantId).map((item) => ({ ...item, implemented: implementedConnectorKeys.has(item.connector_key) }));
+    const now = nowIso();
+    return listConnectors(db, auth.tenantId).map((item) => {
+      const connector = { ...item, implemented: implementedConnectorKeys.has(item.connector_key) };
+      return { ...connector, schedule: describeConnectorSchedule(connector, now) };
+    });
   });
   router.get('/api/v1/connectors/runs', async ({ auth, query }) => {
     requireScope(auth, 'admin');

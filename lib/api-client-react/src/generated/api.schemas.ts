@@ -597,6 +597,11 @@ export interface SignalsResponse {
 
 export type ConnectorConfig = { [key: string]: unknown };
 
+/**
+ * Who started the run. Null for runs recorded before the trigger was tracked.
+ * @nullable
+ */
+export type ConnectorRunTrigger = typeof ConnectorRunTrigger[keyof typeof ConnectorRunTrigger] | null;
 export interface Connector {
   connector_key: string;
   label: string;
@@ -612,10 +617,18 @@ export interface Connector {
   /** @nullable */
   last_run_at?: string | null;
   /** @nullable */
+  next_run_at?: string | null;
+  /** @nullable */
+  backoff_until?: string | null;
+  consecutive_failures?: number;
+  /** @nullable */
   last_error?: string | null;
   config?: ConnectorConfig;
+  last_run?: ConnectorRunSummary | null;
+  schedule?: ConnectorSchedule;
 }
 
+export type ConnectorRunMetadata = { [key: string]: unknown };
 export interface ConnectorsResponse {
   data: Connector[];
   meta: ResponseMeta;
@@ -1198,6 +1211,14 @@ export const ListRadarSignalsStatus = {
   expired: 'expired',
 } as const;
 
+export type ListRadarConnectorRunsParams = {
+connector_key?: string;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
 export type ListRadarReviewQueueParams = {
 /**
  * @minimum 1
@@ -1206,3 +1227,66 @@ export type ListRadarReviewQueueParams = {
 limit?: number;
 };
 
+
+export interface ConnectorRunSummary {
+  id: string;
+  connector_key: string;
+  status: string;
+  trigger: ConnectorRunTrigger | null;
+  started_at: string;
+  /** @nullable */
+  finished_at?: string | null;
+  /** @nullable */
+  duration_ms?: number | null;
+  records_seen?: number;
+  records_inserted?: number;
+  records_rejected?: number;
+  signals_created?: number;
+  /** @nullable */
+  error_message?: string | null;
+}
+
+export const ConnectorScheduleState = {
+  push: 'push',
+  adapter_pending: 'adapter_pending',
+  needs_configuration: 'needs_configuration',
+  disabled: 'disabled',
+  running: 'running',
+  backoff: 'backoff',
+  input_rejected: 'input_rejected',
+  manual: 'manual',
+  due: 'due',
+  waiting: 'waiting',
+} as const;
+
+export const ConnectorRunTrigger = {
+  scheduled: 'scheduled',
+  manual: 'manual',
+} as const;
+
+/**
+ * Why a connector's cadence will or will not run next. Derived by the server from the persisted connector state.
+ */
+export interface ConnectorSchedule {
+  state: ConnectorScheduleState;
+  reason: string;
+  /** True when the scheduler will pick the connector up without operator action. */
+  will_run: boolean;
+  /** @nullable */
+  next_run_at: string | null;
+  /** @nullable */
+  backoff_until: string | null;
+  consecutive_failures: number;
+}
+
+export interface ConnectorRunsResponse {
+  data: ConnectorRun[];
+  meta: ResponseMeta;
+}
+
+export type ConnectorScheduleState = typeof ConnectorScheduleState[keyof typeof ConnectorScheduleState];
+
+export type ConnectorRun = ConnectorRunSummary & ({
+  metadata?: ConnectorRunMetadata;
+  cursor?: unknown | null;
+});

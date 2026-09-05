@@ -187,13 +187,14 @@ paths:
         "200": { description: Signal catalog }
   /api/v1/connectors:
     get:
-      summary: Connector configuration and runtime state
+      summary: Connector configuration and runtime state, including the latest run and a `schedule` explanation of why the cadence is or is not going to run
       responses:
         "200": { description: Connectors }
   /api/v1/connectors/runs:
     get:
-      summary: Recent connector run counts, failures, durations and cursors (administrator only)
+      summary: Recent connector run counts, failures, durations, cursors and trigger (scheduled or manual; administrator only)
       parameters:
+        - { in: query, name: connector_key, schema: { type: string } }
         - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200 } }
       responses:
         "200": { description: Connector runs }

@@ -5,6 +5,7 @@ import { rescoreDueCompanies } from './signals.js';
 import { config } from '../config.js';
 import { hasGoogleSheetsTenantBinding } from '../connectors/google-sheets.js';
 import { claimConnectorLease, instanceId, recoverExpiredLeases, renewConnectorLease } from './connector-leases.js';
+import { SCHEDULE_REJECTED_STATUS } from './connector-schedule.js';
 
 const trustedTenantFields = new Set(['trustedTenantId', 'trusted_tenant_id']);
 const claimMissCodes = new Set(['connector_already_running', 'connector_not_due']);
@@ -29,8 +30,11 @@ class LeaseLostError extends Error {
  *   of backoff (the scheduler's atomic "pick a due connector"); rejects with
  *   `connector_not_due` when another instance got there first.
  * - `leaseMs`, `owner`: lease length and instance label (defaults from config).
+ * - `trigger`: `'manual'` (default) or `'scheduled'`; recorded in
+ *   connector_runs.metadata_json so operators can tell scheduled runs from
+ *   manual ones.
  */
-export async function runConnector(db, tenantId, key, input = {}, { requireDue = false, leaseMs = config.connectorLeaseMs, owner = instanceId } = {}) {
+export async function runConnector(db, tenantId, key, input = {}, { requireDue = false, leaseMs = config.connectorLeaseMs, owner = instanceId, trigger = 'manual' } = {}) {
   if (!isPlainObject(input)) throw new AppError(400, 'invalid_connector_input', 'Connector input must be a JSON object.');
   if (input.reset_cursor !== undefined && typeof input.reset_cursor !== 'boolean') throw new AppError(400, 'invalid_reset_cursor', 'reset_cursor must be a boolean.');
   if (containsSecretFields(input)) throw new AppError(400, 'unsafe_connector_input', 'Store credentials in environment variables and keep connector input nesting to eight levels or fewer.');
@@ -64,7 +68,7 @@ export async function runConnector(db, tenantId, key, input = {}, { requireDue =
   const claimed = db.transaction(() => {
     if (!claimConnectorLease(db, tenantId, key, { runId, owner, leaseMs, requireDue, now: started })) return false;
     db.run(`INSERT INTO connector_runs(id, tenant_id, connector_key, status, started_at, metadata_json)
-      VALUES (?, ?, ?, 'running', ?, ?)`, [runId, tenantId, key, started, stableJson({ input: redactSecrets(requestedInput), resumed, instance: owner })]);
+      VALUES (?, ?, ?, 'running', ?, ?)`, [runId, tenantId, key, started, stableJson({ input: redactSecrets(requestedInput), resumed, instance: owner, trigger })]);
     return true;
   });
   if (!claimed) {
@@ -127,7 +131,7 @@ export async function runConnector(db, tenantId, key, input = {}, { requireDue =
         signals_created=?, duration_ms=?, provider_cursor_json=?, cursor_json=?, metadata_json=? WHERE id=?`,
         [runStatus, finished, outcome.seen, outcome.inserted, outcome.rejected, outcome.signals_created, Date.now() - startedMs,
           stableJson(nextCursor), stableJson({ input_fingerprint: inputFingerprint }),
-          stableJson({ input: redactSecrets(requestedInput), resumed, instance: owner, usage: redactSecrets(collected.usage || {}) }), runId]);
+          stableJson({ input: redactSecrets(requestedInput), resumed, instance: owner, trigger, usage: redactSecrets(collected.usage || {}) }), runId]);
       return true;
     });
     if (!closed) throw new LeaseLostError(row.label);
@@ -238,7 +242,7 @@ export function startScheduler(db, intervalMs = 60_000, { onEvent, leaseMs = con
       const scheduleInput = json(row.config_json).scheduleInput;
       if (!scheduleInput) continue;
       try {
-        const outcome = await runConnector(db, row.tenant_id, row.connector_key, scheduleInput, { requireDue: true, leaseMs, owner });
+        const outcome = await runConnector(db, row.tenant_id, row.connector_key, scheduleInput, { requireDue: true, leaseMs, owner, trigger: 'scheduled' });
         connectorsRun += 1;
         emit('info', 'scheduled_connector_run', { tenant_id: row.tenant_id, connector: row.connector_key, run_id: outcome.run_id, status: outcome.status });
       } catch (error) {
@@ -262,9 +266,14 @@ export function startScheduler(db, intervalMs = 60_000, { onEvent, leaseMs = con
         // setConnectorEnabled runs the adapter's validateInput at save time,
         // so this branch is the safety net for rows saved before an adapter
         // tightened its rules or for environment drift (revoked bindings).
+        // The rejection is also persisted as the connector status (unless
+        // another run holds the row) so the console can say why the cadence waits.
         const rejected = Boolean(error.status) && error.status < 500 && error.status !== 429;
         if (rejected) {
-          db.run('UPDATE connectors SET next_run_at=? WHERE tenant_id=? AND connector_key=?', [nextRun(nowIso(), row.cadence), row.tenant_id, row.connector_key]);
+          const rejectedAt = nowIso();
+          db.run(`UPDATE connectors SET next_run_at=?, last_error=?, updated_at=?,
+            status=CASE WHEN status='running' THEN status ELSE '${SCHEDULE_REJECTED_STATUS}' END
+            WHERE tenant_id=? AND connector_key=?`, [nextRun(rejectedAt, row.cadence), redactText(error.message), rejectedAt, row.tenant_id, row.connector_key]);
         }
         emit('error', 'connector_run_failed', { tenant_id: row.tenant_id, connector: row.connector_key, message: redactText(error.message), deferred_to_next_cadence: rejected });
       }

@@ -18,8 +18,9 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/loading-states";
 import { useToast } from "@/hooks/use-toast";
-import { Plug, CheckCircle2, AlertCircle, Clock, Info, ShieldAlert, Settings } from "lucide-react";
+import { Plug, AlertCircle, Clock, Info, ShieldAlert, Settings, CalendarClock, User } from "lucide-react";
 import { humanizeLabel } from "@/lib/utils";
+import { lastRunSummary, nextRunLabel, scheduleNotice, toneBadgeClasses, toneClasses } from "@/lib/connector-schedule";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ConnectorDialog } from "@/components/sources/connector-dialog";
 
@@ -135,6 +136,12 @@ export default function Sources() {
           const isGoogleSheetsUnconfigured = managed && !connector.configured;
           const needsRealConfig = !connector.configured && !noKey && !isGoogleSheetsUnconfigured;
           const actionDisabled = !connector.implemented || (!connector.configured && !noKey);
+          const lastRun = lastRunSummary(connector);
+          const notice = scheduleNotice(connector);
+          const scheduleState = connector.schedule?.state;
+          // The schedule notice already quotes the last error for these states.
+          const showLastError = Boolean(connector.last_error) && connector.enabled
+            && scheduleState !== "input_rejected" && scheduleState !== "backoff" && !(scheduleState === "due" && notice?.tone === "warning");
 
           return (
             <Card
@@ -200,17 +207,37 @@ export default function Sources() {
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="flex items-start justify-between gap-2">
                   <span className="text-muted-foreground font-medium">Last Run</span>
-                  <span className="font-medium">
-                    {connector.last_run_at
-                      ? new Date(connector.last_run_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                      : "Never"}
+                  <span className="font-medium text-right flex flex-col items-end gap-1" data-testid={`text-last-run-${connector.connector_key}`}>
+                    <span>{lastRun.time}</span>
+                    {lastRun.outcome && (
+                      <span className="flex items-center gap-1.5">
+                        <Badge className={`${toneBadgeClasses[lastRun.tone]} text-[10px] px-1.5 py-0`} data-testid={`badge-last-run-outcome-${connector.connector_key}`}>
+                          {lastRun.outcome}
+                        </Badge>
+                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground" data-testid={`text-last-run-trigger-${connector.connector_key}`}>
+                          {lastRun.run?.trigger === "scheduled" ? <CalendarClock className="h-3 w-3" /> : <User className="h-3 w-3" />}
+                          {lastRun.trigger}
+                        </span>
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-muted-foreground font-medium">Next Run</span>
+                  <span
+                    className={`font-medium text-right ${connector.schedule?.will_run ? "" : "text-muted-foreground"}`}
+                    title={connector.schedule?.reason}
+                    data-testid={`text-next-run-${connector.connector_key}`}
+                  >
+                    {nextRunLabel(connector.schedule)}
                   </span>
                 </div>
 
                 {/* State explanations */}
-                <div className="pt-2 flex-1">
+                <div className="pt-2 flex-1 space-y-2">
                   {!connector.implemented && (
                     <div className="p-2.5 bg-slate-100 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 rounded-md text-xs flex items-start gap-2 border border-slate-200 dark:border-slate-700/50">
                       <Info className="h-4 w-4 mt-0.5 shrink-0" />
@@ -235,7 +262,19 @@ export default function Sources() {
                       </div>
                     </div>
                   )}
-                  {connector.last_error && connector.enabled && (
+                  {notice && (
+                    <div
+                      className={`p-2.5 rounded-md text-xs flex items-start gap-2 border ${toneClasses[notice.tone]}`}
+                      data-testid={`schedule-notice-${connector.connector_key}`}
+                    >
+                      {notice.tone === "error" ? <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" /> : <Clock className="h-4 w-4 shrink-0 mt-0.5" />}
+                      <div className="line-clamp-4" title={notice.body}>
+                        <strong className="block mb-0.5">{notice.title}</strong>
+                        {notice.body}
+                      </div>
+                    </div>
+                  )}
+                  {showLastError && connector.last_error && (
                     <div className={`p-2.5 rounded-md text-xs flex items-start gap-2 border ${
                       connector.last_error.includes('HTTP 429')
                         ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-400 border-amber-200 dark:border-amber-800/50'
