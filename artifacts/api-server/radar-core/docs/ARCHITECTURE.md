@@ -86,7 +86,7 @@ Suppression is a safety override. A risk-triggered company receives an `Outreach
 
 ## Connector lifecycle
 
-Pull connectors execute with a single-process run lock, input-size and result-size bounds, provider timeouts, GET retry/backoff, isolated normalization failures and per-record ingestion failures. A run can be `succeeded`, `partial`, `failed` or `abandoned`. Repeated run failures create exponential backoff up to 24 hours. Successful/partial provider cursors are injected into the next run unless explicitly overridden or reset.
+Pull connectors execute under a database run lease (`connectors.lease_*`, claimed atomically so scheduled and manual runs on any instance never overlap, renewed while in flight and recovered as `abandoned` after `CONNECTOR_LEASE_MS`), input-size and result-size bounds, provider timeouts, GET retry/backoff, isolated normalization failures and per-record ingestion failures. A run can be `succeeded`, `partial`, `failed` or `abandoned`. Repeated run failures create exponential backoff up to 24 hours. Successful/partial provider cursors are injected into the next run unless explicitly overridden or reset.
 
 Provider secrets come only from environment/managed secret storage. Persisted schedule input is recursively checked for credential-like fields, and run metadata is recursively redacted.
 

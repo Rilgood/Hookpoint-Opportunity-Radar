@@ -93,6 +93,7 @@ export const config = Object.freeze({
   maxExportRows: Number(process.env.MAX_EXPORT_ROWS || 50_000),
   maxFutureSkewMinutes: Number(process.env.MAX_FUTURE_SKEW_MINUTES || 60),
   connectorTimeoutMs: Number(process.env.CONNECTOR_TIMEOUT_MS || 45_000),
+  connectorLeaseMs: Number(process.env.CONNECTOR_LEASE_MS || 300_000),
   connectorMaxRecords: Number(process.env.CONNECTOR_MAX_RECORDS || 5_000),
   rescoreBatchSize: Number(process.env.RESCORE_BATCH_SIZE || 500),
   rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE || 600),
@@ -123,10 +124,13 @@ export function runtimeIssues(db) {
   if (config.allowedOrigins.includes('*')) issues.push({ code: 'wildcard_cors', severity: 'warning', message: 'Use explicit ALLOWED_ORIGINS values.' });
   if (config.env === 'production' && config.allowedOrigins.some((origin) => origin.includes('localhost'))) issues.push({ code: 'development_cors_origin', severity: 'warning', message: 'Replace localhost in ALLOWED_ORIGINS for production.' });
   const positiveIntegers = [config.maxBodyBytes, config.maxBatchRecords, config.maxExportRows, config.connectorTimeoutMs,
-    config.connectorMaxRecords, config.rescoreBatchSize, config.rateLimitPerMinute];
+    config.connectorLeaseMs, config.connectorMaxRecords, config.rescoreBatchSize, config.rateLimitPerMinute];
   const numericValid = Number.isInteger(config.port) && config.port >= 1 && config.port <= 65_535
     && Number.isFinite(config.schedulerIntervalMs) && config.schedulerIntervalMs >= 5_000
     && Number.isFinite(config.maxFutureSkewMinutes) && config.maxFutureSkewMinutes > 0
+    // A run lease must comfortably outlast one provider request, or a healthy
+    // slow run would be treated as abandoned while it is still in flight.
+    && config.connectorLeaseMs >= config.connectorTimeoutMs * 2
     && positiveIntegers.every((value) => Number.isInteger(value) && value > 0);
   if (!numericValid) issues.push({ code: 'invalid_numeric_configuration', severity: 'critical', message: 'Numeric environment settings are outside their supported ranges.' });
   return issues;

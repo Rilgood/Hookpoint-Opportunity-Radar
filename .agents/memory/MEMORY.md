@@ -7,5 +7,6 @@
 - [Scheduler live verification](scheduler-live-verification.md) — GDELT 429s the sandbox; prove scheduling via run rows/backoff, temp API key for curl, WAL-copy and async-guard pitfalls.
 - [Calibration evaluation contract](calibration-evaluation-contract.md) — evaluate guardrail outcomes are 200 "blocked" bodies with counts, not error codes; no holdout_unavailable exists server-side.
 - [Radar Postgres storage](radar-postgres-storage.md) — sync worker-thread bridge to Postgres, tables in the `radar` schema because drizzle push wipes `public`; keep SQL portable across both engines.
+- [Connector run leases](connector-run-leases.md) — all connector runs go through the DB lease; closing writes guarded by lease_token; expired leases cannot be renewed by their holder.
 - [Radar schema and the publish flow](radar-schema-publish-flow.md) — production never runs DDL; regenerate the manifest and migrate the dev DB before publishing or readiness 503s with schema_out_of_date.
 - [api-server test suite](api-server-test-suite.md) — env in setupFiles, only getAuth mocked, fetch against an ephemeral port; runs without Clerk secrets or DATABASE_URL.

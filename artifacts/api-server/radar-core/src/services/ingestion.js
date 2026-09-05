@@ -4,14 +4,22 @@ import { resolveCompany, upsertPeople } from './entities.js';
 import { applySignals, detectSignals, rescoreCompany } from './signals.js';
 import { observationTypeSet } from '../observation-contract.js';
 
+/**
+ * Ingests a batch one record per transaction. `context.checkpoint`, when
+ * given, is called between records every `context.checkpointEvery` records
+ * (outside any transaction) so a long synchronous batch can renew a run lease
+ * or abort; an error it throws stops the batch immediately.
+ */
 export function ingestBatch(db, tenantId, records, context = {}) {
   if (!Array.isArray(records)) throw new AppError(400, 'records_must_be_array', 'records must be an array.');
   if (!records.length) throw new AppError(400, 'empty_batch', 'At least one observation is required.');
   if (records.length > config.maxBatchRecords) throw new AppError(413, 'batch_too_large', `Maximum batch size is ${config.maxBatchRecords} observations.`);
+  const { checkpoint, checkpointEvery = 25, ...recordContext } = context;
   const result = { seen: records.length, inserted: 0, duplicates: 0, rejected: 0, signals: 0, signals_created: 0, people: 0, companies: new Set(), errors: [] };
   for (let index = 0; index < records.length; index += 1) {
+    if (checkpoint && index > 0 && index % checkpointEvery === 0) checkpoint(index);
     try {
-      const outcome = db.transaction(() => ingestOne(db, tenantId, records[index], context));
+      const outcome = db.transaction(() => ingestOne(db, tenantId, records[index], recordContext));
       if (outcome.duplicate) result.duplicates += 1;
       else {
         result.inserted += 1;
@@ -24,7 +32,7 @@ export function ingestBatch(db, tenantId, records, context = {}) {
       result.rejected += 1;
       const rejection = { index, code: error.code || 'ingestion_error', message: error.status >= 500 ? 'Unexpected ingestion failure.' : error.message };
       result.errors.push(rejection);
-      storeRejection(db, tenantId, records[index], context, rejection);
+      storeRejection(db, tenantId, records[index], recordContext, rejection);
     }
   }
   return { ...result, companies: [...result.companies], errors: result.errors.slice(0, 100) };

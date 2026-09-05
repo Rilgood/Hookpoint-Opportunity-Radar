@@ -255,6 +255,17 @@ const migrations = [
           WHERE status='approved';
       `);
     }
+  },
+  {
+    version: 10,
+    // Connector run leases: a due connector is claimed in the database so that
+    // several API instances sharing one database never run it concurrently.
+    // `lease_token` is the id of the claiming run, `lease_owner` the instance.
+    run(db) {
+      addColumn(db, 'connectors', 'lease_owner', 'TEXT');
+      addColumn(db, 'connectors', 'lease_token', 'TEXT');
+      addColumn(db, 'connectors', 'lease_expires_at', 'TEXT');
+    }
   }
 ];
 

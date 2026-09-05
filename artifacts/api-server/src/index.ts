@@ -24,7 +24,7 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 type SchedulerEvent = {
-  level: "debug" | "info" | "error";
+  level: "debug" | "info" | "warn" | "error";
   event: string;
   [key: string]: unknown;
 };
@@ -72,10 +72,13 @@ async function shutdown(signal: NodeJS.Signals) {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info({ signal }, "Server stopping");
+  // Give an in-flight connector run time to finish and release its lease; a
+  // run cut short here is recovered as abandoned by the next scheduler tick.
+  const shutdownGraceMs = Math.max(10_000, radarConfig.connectorTimeoutMs + 5_000);
   const forceExit = setTimeout(() => {
     logger.error("Shutdown timed out; exiting");
     process.exit(1);
-  }, 10_000);
+  }, shutdownGraceMs);
   forceExit.unref();
 
   try {

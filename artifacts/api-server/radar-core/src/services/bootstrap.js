@@ -2,21 +2,20 @@ import { config } from '../config.js';
 import { connectorCatalog } from './catalog.js';
 import { hashSecret, id, nowIso, stableJson } from '../lib.js';
 import { hasGoogleSheetsTenantBinding } from '../connectors/google-sheets.js';
+import { recoverExpiredLeases } from './connector-leases.js';
 
 export function bootstrap(db, { withAdminKey = true } = {}) {
   const now = nowIso();
-  const staleRunCutoff = new Date(Date.now() - Math.max(config.connectorTimeoutMs * 2, 10 * 60_000)).toISOString();
   db.run(
     `INSERT INTO tenants(id, name, slug, settings_json, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
     [config.defaultTenantId, 'Hook Point', 'hook-point', stableJson({ brand: 'Hook Point × Hyper Ads', scoreVersion: 'rules-1.1' }), now, now]
   );
 
-  db.run(`UPDATE connector_runs SET status='abandoned', finished_at=?, error_message='Process ended before the connector run completed.'
-    WHERE status='running' AND started_at<?`, [now, staleRunCutoff]);
-  db.run(`UPDATE connectors SET status='error', last_error='Previous connector run did not complete.', updated_at=?
-    WHERE status='running' AND EXISTS (SELECT 1 FROM connector_runs r WHERE r.tenant_id=connectors.tenant_id
-      AND r.connector_key=connectors.connector_key AND r.status='abandoned')`, [now]);
+  // Runs whose lease expired belong to an instance that is gone; runs with a
+  // live lease may belong to another instance that is still working, so only
+  // expired leases are recovered here (the scheduler repeats this every tick).
+  recoverExpiredLeases(db, { now });
 
   if (withAdminKey && config.adminApiKey.length >= 32 && config.hashSalt.length >= 32) {
     const bootstrapKeyId = `key_bootstrap_${config.defaultTenantId}`;

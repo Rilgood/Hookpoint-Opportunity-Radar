@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { Worker } from 'node:worker_threads';
 import { openDatabase, wrapDriver } from '../src/db/index.js';
 import { openSqlite } from '../src/db/sqlite.js';
-import { attachOptions, openTestDatabase } from './helpers/database.js';
+import { attachOptions, openTestDatabase, testDatabaseTarget } from './helpers/database.js';
 import { schema } from '../src/db/schema.js';
 import { applyMigrations } from '../src/db/migrations.js';
 import { bootstrap } from '../src/services/bootstrap.js';
@@ -18,6 +18,7 @@ import { ingestBatch, ingestOne } from '../src/services/ingestion.js';
 import { companyDetail, exportCompaniesCsv, ingestionRejections } from '../src/services/queries.js';
 import { deleteCompany, updateCompany } from '../src/services/entities.js';
 import { runConnector, setConnectorEnabled, startScheduler } from '../src/services/connector-runner.js';
+import { recoverExpiredLeases } from '../src/services/connector-leases.js';
 import { approveScoreCalibration, recordOutcome } from '../src/services/outcomes.js';
 import { rescoreCompany, rescoreDueCompanies } from '../src/services/signals.js';
 import { consumeWebhookReceipt } from '../src/services/webhooks.js';
@@ -733,6 +734,301 @@ test('stopping the scheduler waits for the in-flight run and starts nothing new'
     assert.equal(db.get("SELECT status FROM connector_runs WHERE connector_key='gdelt'").status, 'succeeded');
   } finally {
     GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('two schedulers sharing one database run a due connector exactly once', async () => {
+  // Two instances = two connections to the same store: a SQLite file, or the
+  // same private schema when the suite runs against Postgres.
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hookpoint-scheduler-lease-'));
+  const primary = testDatabaseTarget() === ':memory:' ? openDatabase(path.join(directory, 'radar.sqlite')) : openTestDatabase();
+  const secondary = openDatabase(testDatabaseTarget() === ':memory:' ? path.join(directory, 'radar.sqlite') : testDatabaseTarget(), attachOptions(primary));
+  bootstrap(primary);
+  primary.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  let invocations = 0;
+  let concurrent = 0;
+  let maxConcurrent = 0;
+  GdeltConnector.prototype.run = async function () {
+    invocations += 1;
+    concurrent += 1;
+    maxConcurrent = Math.max(maxConcurrent, concurrent);
+    // Stay in flight long enough for the other scheduler's tick to observe the lease.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    concurrent -= 1;
+    return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+  };
+  const events = { a: [], b: [] };
+  const stops = [];
+  try {
+    setConnectorEnabled(primary, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Shared target' } } });
+    stops.push(startScheduler(primary, 60_000, { instanceId: 'instance-a', onEvent: (event) => events.a.push(event) }));
+    stops.push(startScheduler(secondary, 60_000, { instanceId: 'instance-b', onEvent: (event) => events.b.push(event) }));
+    await waitFor(() => events.a.some((event) => event.event === 'scheduler_tick') && events.b.some((event) => event.event === 'scheduler_tick'));
+
+    assert.equal(invocations, 1, 'the connector ran on exactly one instance');
+    assert.equal(maxConcurrent, 1);
+    const runs = primary.all("SELECT status, metadata_json FROM connector_runs WHERE connector_key='gdelt'");
+    assert.equal(runs.length, 1, 'exactly one connector_runs row');
+    assert.equal(runs[0].status, 'succeeded');
+    const scheduled = [...events.a, ...events.b].filter((event) => event.event === 'scheduled_connector_run');
+    assert.equal(scheduled.length, 1);
+    const winner = events.a.includes(scheduled[0]) ? 'instance-a' : 'instance-b';
+    assert.equal(JSON.parse(runs[0].metadata_json).instance, winner);
+    const connector = primary.get("SELECT status, lease_owner, lease_token, lease_expires_at, next_run_at FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    assert.equal(connector.status, 'ready');
+    assert.equal(connector.lease_owner, null, 'the lease is released when the run finishes');
+    assert.equal(connector.lease_token, null);
+    assert.equal(connector.lease_expires_at, null);
+    assert.ok(connector.next_run_at > new Date().toISOString(), 'the connector is no longer due');
+    assert.equal([...events.a, ...events.b].filter((event) => event.level === 'error').length, 0);
+
+    // While a run holds the lease, a manual run (from any instance) is refused
+    // and a scheduler tick treats the connector as not due.
+    let release;
+    GdeltConnector.prototype.run = async function () {
+      await new Promise((resolve) => { release = resolve; });
+      return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+    };
+    const held = runConnector(primary, config.defaultTenantId, 'gdelt', { company: { name: 'Manual' } });
+    await waitFor(() => Boolean(release));
+    await assert.rejects(runConnector(secondary, config.defaultTenantId, 'gdelt', { company: { name: 'Manual' } }),
+      (error) => error.code === 'connector_already_running' && error.status === 409);
+    await assert.rejects(runConnector(secondary, config.defaultTenantId, 'gdelt', { company: { name: 'Manual' } }, { requireDue: true }),
+      (error) => error.code === 'connector_not_due');
+    release();
+    const manual = await held;
+    assert.equal(manual.status, 'succeeded');
+    assert.equal(primary.get("SELECT error_message FROM connector_runs WHERE id=?", [manual.run_id]).error_message, null);
+    assert.equal(primary.get("SELECT COUNT(*) count FROM connector_runs WHERE connector_key='gdelt'").count, 2);
+  } finally {
+    for (const stop of stops) await stop();
+    GdeltConnector.prototype.run = originalRun;
+    secondary.close();
+    primary.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('scheduler recovers an expired lease, marks the run abandoned and backs the connector off', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  let invocations = 0;
+  GdeltConnector.prototype.run = async function () {
+    invocations += 1;
+    return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+  };
+  const events = [];
+  let stop;
+  try {
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Crashed target' } } });
+    // Simulate an instance that claimed the connector, started a run and died:
+    // the lease was never renewed or released.
+    const staleStart = new Date(Date.now() - 20 * 60_000).toISOString();
+    const expired = new Date(Date.now() - 60_000).toISOString();
+    db.run(`INSERT INTO connector_runs(id, tenant_id, connector_key, status, started_at, metadata_json)
+      VALUES ('run_crashed', ?, 'gdelt', 'running', ?, '{}')`, [config.defaultTenantId, staleStart]);
+    db.run(`UPDATE connectors SET status='running', lease_owner='dead-instance', lease_token='run_crashed', lease_expires_at=?
+      WHERE tenant_id=? AND connector_key='gdelt'`, [expired, config.defaultTenantId]);
+    // A live lease held by another instance must be left alone.
+    db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='sec_edgar'", [config.defaultTenantId]);
+    const live = new Date(Date.now() + 10 * 60_000).toISOString();
+    db.run(`INSERT INTO connector_runs(id, tenant_id, connector_key, status, started_at, metadata_json)
+      VALUES ('run_live', ?, 'sec_edgar', 'running', ?, '{}')`, [config.defaultTenantId, new Date().toISOString()]);
+    db.run(`UPDATE connectors SET status='running', lease_owner='busy-instance', lease_token='run_live', lease_expires_at=?
+      WHERE tenant_id=? AND connector_key='sec_edgar'`, [live, config.defaultTenantId]);
+
+    stop = startScheduler(db, 60_000, { onEvent: (event) => events.push(event) });
+    await waitFor(() => events.some((event) => event.event === 'scheduler_tick'));
+
+    const abandoned = events.find((event) => event.event === 'connector_run_abandoned');
+    assert.ok(abandoned, 'the recovery is reported');
+    assert.equal(abandoned.level, 'warn');
+    assert.equal(abandoned.connector, 'gdelt');
+    assert.equal(abandoned.run_id, 'run_crashed');
+    assert.equal(abandoned.lease_owner, 'dead-instance');
+    assert.equal(events.filter((event) => event.event === 'connector_run_abandoned').length, 1, 'the live lease is not recovered');
+
+    const run = db.get("SELECT status, finished_at, error_message FROM connector_runs WHERE id='run_crashed'");
+    assert.equal(run.status, 'abandoned');
+    assert.ok(run.finished_at);
+    assert.match(run.error_message, /lease expired/i);
+    assert.equal(db.get("SELECT status FROM connector_runs WHERE id='run_live'").status, 'running');
+
+    const connector = db.get("SELECT status, lease_owner, lease_token, lease_expires_at, consecutive_failures, backoff_until, last_error FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    assert.equal(connector.status, 'error');
+    assert.equal(connector.lease_owner, null);
+    assert.equal(connector.lease_token, null);
+    assert.equal(connector.lease_expires_at, null);
+    assert.equal(connector.consecutive_failures, 1);
+    assert.ok(connector.backoff_until > new Date().toISOString(), 'an abandoned run counts as an operational failure');
+    assert.match(connector.last_error, /lease expired/i);
+    assert.equal(invocations, 0, 'the recovered connector is in backoff and not re-run in the same tick');
+    const busy = db.get("SELECT status, lease_owner, lease_expires_at FROM connectors WHERE tenant_id=? AND connector_key='sec_edgar'", [config.defaultTenantId]);
+    assert.deepEqual(busy, { status: 'running', lease_owner: 'busy-instance', lease_expires_at: live });
+
+    // Once the backoff passes the connector is claimable again and runs normally.
+    db.run("UPDATE connectors SET backoff_until=NULL WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    const outcome = await runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'Crashed target' } }, { requireDue: true });
+    assert.equal(outcome.status, 'succeeded');
+    assert.equal(invocations, 1);
+    assert.equal(db.get("SELECT consecutive_failures FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]).consecutive_failures, 0);
+  } finally {
+    if (stop) await stop();
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('a run that outlives its lease discards its results instead of overwriting the recovered state', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  let release;
+  GdeltConnector.prototype.run = async function () {
+    await new Promise((resolve) => { release = resolve; });
+    return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+  };
+  try {
+    setConnectorEnabled(db, config.defaultTenantId, 'gdelt', true, { schedule_input: { company: { name: 'Slow target' } } });
+    const running = runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'Slow target' } });
+    await waitFor(() => Boolean(release));
+    const runId = db.get("SELECT lease_token FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]).lease_token;
+    assert.ok(runId, 'the run holds the lease while in flight');
+    // The instance stalls: its lease lapses and another instance recovers it.
+    db.run("UPDATE connectors SET lease_expires_at=? WHERE tenant_id=? AND connector_key='gdelt'", [new Date(Date.now() - 1_000).toISOString(), config.defaultTenantId]);
+    const recovered = recoverExpiredLeases(db);
+    assert.equal(recovered.length, 1);
+    assert.equal(recovered[0].run_id, runId);
+    const afterRecovery = db.get("SELECT status, backoff_until, lease_token FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    assert.equal(afterRecovery.status, 'error');
+    assert.equal(afterRecovery.lease_token, null);
+
+    release();
+    await assert.rejects(running, (error) => error.code === 'connector_lease_lost' && error.status === 409);
+    const run = db.get('SELECT status, finished_at, error_message FROM connector_runs WHERE id=?', [runId]);
+    assert.equal(run.status, 'abandoned', 'the late result is discarded, not stored on top of the recovery');
+    assert.ok(run.finished_at);
+    assert.match(run.error_message, /lease expired/i);
+    const connector = db.get("SELECT status, backoff_until, lease_token, last_run_at FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    assert.equal(connector.status, 'error', 'the late finish did not clobber the recovered connector state');
+    assert.equal(connector.backoff_until, afterRecovery.backoff_until);
+    assert.equal(connector.lease_token, null);
+    assert.equal(connector.last_run_at, null);
+  } finally {
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('a lease that expires during a long ingestion stops the run before it can report success', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const records = Array.from({ length: 60 }, (_, index) => ({
+    company: { name: 'Long Ingest Co', domain: 'long-ingest.test' }, source: 'gdelt', external_id: `long-${index}`,
+    type: 'news', title: `Mention ${index}`, observed_at: new Date().toISOString(),
+  }));
+  const originalRun = GdeltConnector.prototype.run;
+  GdeltConnector.prototype.run = async () => ({ records, normalizationErrors: [], cursor: null, usage: {} });
+  // Ingestion is synchronous, so the lease is expired from inside it: after a
+  // handful of per-record transactions the clock (as far as the row is
+  // concerned) has passed lease_expires_at.
+  const originalTransaction = db.transaction.bind(db);
+  let recordTransactions = 0;
+  db.transaction = (fn) => {
+    const result = originalTransaction(fn);
+    recordTransactions += 1;
+    if (recordTransactions === 10) db.run("UPDATE connectors SET lease_expires_at=? WHERE tenant_id=? AND connector_key='gdelt'", [new Date(Date.now() - 1_000).toISOString(), config.defaultTenantId]);
+    return result;
+  };
+  try {
+    await assert.rejects(runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'Long Ingest Co' } }), (error) => error.code === 'connector_lease_lost');
+    const run = db.get("SELECT id, status FROM connector_runs WHERE connector_key='gdelt' ORDER BY started_at DESC LIMIT 1");
+    assert.equal(run.status, 'abandoned');
+    const stored = db.get("SELECT COUNT(*) AS n FROM observations WHERE tenant_id=? AND source='gdelt'", [config.defaultTenantId]).n;
+    assert.ok(stored > 0 && stored < records.length, `ingestion stopped part-way (${stored} of ${records.length})`);
+    const connector = db.get("SELECT status, lease_token, last_run_at FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    assert.equal(connector.lease_token, run.id, 'the expired holder did not clear or close the lease');
+    assert.equal(connector.last_run_at, null, 'no success was recorded on the connector');
+
+    // Recovery hands the connector to the next claimant, which re-ingests
+    // the same records without duplicates once its backoff has passed.
+    db.transaction = originalTransaction;
+    assert.equal(recoverExpiredLeases(db).length, 1);
+    db.run("UPDATE connectors SET backoff_until=NULL WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    const rerun = await runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'Long Ingest Co' } });
+    assert.equal(rerun.status, 'succeeded');
+    assert.equal(rerun.inserted + rerun.duplicates, records.length);
+    assert.equal(rerun.duplicates, stored);
+    assert.equal(db.get("SELECT COUNT(*) AS n FROM observations WHERE tenant_id=? AND source='gdelt'", [config.defaultTenantId]).n, records.length);
+  } finally {
+    db.transaction = originalTransaction;
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('an expired lease cannot be revived by its holder even before anyone recovers it', async () => {
+  const db = setup();
+  db.run("UPDATE connectors SET configured=1 WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+  const originalRun = GdeltConnector.prototype.run;
+  let release;
+  GdeltConnector.prototype.run = async function () {
+    await new Promise((resolve) => { release = resolve; });
+    return { records: [], normalizationErrors: [], cursor: null, usage: {} };
+  };
+  try {
+    const running = runConnector(db, config.defaultTenantId, 'gdelt', { company: { name: 'Slow target' } });
+    await waitFor(() => Boolean(release));
+    const runId = db.get("SELECT lease_token FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]).lease_token;
+    const expired = new Date(Date.now() - 1_000).toISOString();
+    db.run("UPDATE connectors SET lease_expires_at=? WHERE tenant_id=? AND connector_key='gdelt'", [expired, config.defaultTenantId]);
+    release();
+    await assert.rejects(running, (error) => error.code === 'connector_lease_lost');
+    assert.equal(db.get('SELECT status FROM connector_runs WHERE id=?', [runId]).status, 'abandoned');
+    // The stale lease is left for recovery, which then applies the backoff.
+    const stale = db.get("SELECT lease_token, lease_expires_at, status FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    assert.equal(stale.lease_token, runId);
+    assert.equal(stale.lease_expires_at, expired);
+    assert.equal(stale.status, 'running');
+    const recovered = recoverExpiredLeases(db);
+    assert.deepEqual(recovered.map((item) => item.run_id), [runId]);
+    assert.equal(recovered[0].runs_abandoned, 0, 'the run was already closed as abandoned by its own instance');
+    const after = db.get("SELECT lease_token, status FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]);
+    assert.equal(after.lease_token, null);
+    assert.equal(after.status, 'error');
+  } finally {
+    GdeltConnector.prototype.run = originalRun;
+    db.close();
+  }
+});
+
+test('bootstrap recovers expired leases but leaves live ones to their instance', () => {
+  const db = setup();
+  const expired = new Date(Date.now() - 60_000).toISOString();
+  const live = new Date(Date.now() + 60_000).toISOString();
+  // Enabled, configured connectors keep an 'error' status through the catalog sync.
+  db.run("UPDATE connectors SET enabled=1, configured=1 WHERE tenant_id=? AND connector_key IN ('gdelt','sec_edgar','usa_spending')", [config.defaultTenantId]);
+  db.run(`INSERT INTO connector_runs(id, tenant_id, connector_key, status, started_at, metadata_json)
+    VALUES ('run_old', ?, 'gdelt', 'running', ?, '{}'), ('run_live', ?, 'sec_edgar', 'running', ?, '{}')`,
+    [config.defaultTenantId, expired, config.defaultTenantId, live]);
+  db.run("UPDATE connectors SET status='running', lease_owner='gone', lease_token='run_old', lease_expires_at=? WHERE tenant_id=? AND connector_key='gdelt'", [expired, config.defaultTenantId]);
+  db.run("UPDATE connectors SET status='running', lease_owner='alive', lease_token='run_live', lease_expires_at=? WHERE tenant_id=? AND connector_key='sec_edgar'", [live, config.defaultTenantId]);
+  // A row from before leases existed: running with no lease at all.
+  db.run(`INSERT INTO connector_runs(id, tenant_id, connector_key, status, started_at, metadata_json)
+    VALUES ('run_legacy', ?, 'usa_spending', 'running', ?, '{}')`, [config.defaultTenantId, expired]);
+  db.run("UPDATE connectors SET status='running' WHERE tenant_id=? AND connector_key='usa_spending'", [config.defaultTenantId]);
+  try {
+    bootstrap(db);
+    assert.equal(db.get("SELECT status FROM connector_runs WHERE id='run_old'").status, 'abandoned');
+    assert.equal(db.get("SELECT status FROM connector_runs WHERE id='run_legacy'").status, 'abandoned');
+    assert.equal(db.get("SELECT status FROM connector_runs WHERE id='run_live'").status, 'running');
+    assert.equal(db.get("SELECT status FROM connectors WHERE tenant_id=? AND connector_key='gdelt'", [config.defaultTenantId]).status, 'error');
+    assert.equal(db.get("SELECT status FROM connectors WHERE tenant_id=? AND connector_key='usa_spending'", [config.defaultTenantId]).status, 'error');
+    assert.equal(db.get("SELECT status, lease_token FROM connectors WHERE tenant_id=? AND connector_key='sec_edgar'", [config.defaultTenantId]).lease_token, 'run_live');
+  } finally {
     db.close();
   }
 });
